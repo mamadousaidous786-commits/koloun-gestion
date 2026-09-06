@@ -61,7 +61,7 @@ exports.creerProduit = async (req, res) => {
 
       const variante = await ProduitVariante.create({
         produit_id: produit.id,
-        image: `/uploads/${fichiers[i].filename}`,
+        image: fichiers[i].path,
         description: infosVariante.description || null,
       });
 
@@ -161,7 +161,7 @@ exports.modifierProduit = async (req, res) => {
         const infos = nouvellesVariantes[i] || { tailles: [] };
         const variante = await ProduitVariante.create({
           produit_id: produit.id,
-          image: `/uploads/${req.files[i].filename}`,
+          image: fichiers[i].path,
           description: infos.description || null,
         });
 

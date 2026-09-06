@@ -242,7 +242,7 @@ INSERT INTO moyens_paiement (nom) VALUES
 ('Orange Money'), ('Paiement Marchand'), ('Cash');
 
 INSERT INTO boutiques (nom, adresse, telephone) VALUES
-('Koloun Luxure', 'Conakry, Guinée', '+224 000 00 00 00');
+('Koloun Luxure', 'Conakry,lambanyi forage dadis', '+224 627 25 84 97 ');
 
 -- Compte administrateur par défaut
 -- Email: admin@koloungestion.com | Mot de passe: Admin123
