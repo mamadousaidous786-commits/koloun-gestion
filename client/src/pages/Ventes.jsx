@@ -94,14 +94,20 @@ export default function Ventes() {
     }
   };
 
-  const imprimerRecu = async (venteId) => {
-    try {
-      const res = await genererRecu(venteId);
-      window.open(urlFichier(res.chemin), '_blank');
-    } catch {
-      toast.error('Impossible de générer le reçu.');
+ const imprimerRecu = async (venteId) => {
+  const nouvelOnglet = window.open('', '_blank'); // ouvert tout de suite, dans le geste du clic
+  try {
+    const res = await genererRecu(venteId);
+    if (nouvelOnglet) {
+      nouvelOnglet.location.href = urlFichier(res.chemin);
+    } else {
+      toast.error('Le navigateur a bloqué l\'ouverture du reçu. Autorise les pop-ups pour ce site.');
     }
-  };
+  } catch {
+    toast.error('Impossible de générer le reçu.');
+    if (nouvelOnglet) nouvelOnglet.close();
+  }
+};
 
   const supprimerLaVente = async (venteId, numeroRecu) => {
     if (!confirm(`Supprimer la vente ${numeroRecu} ? Le stock sera restauré.`)) return;
