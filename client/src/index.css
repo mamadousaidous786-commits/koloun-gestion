@@ -4,24 +4,36 @@
 
 body {
   @apply bg-charbon-950 text-charbon-50 font-sans;
+  -webkit-font-smoothing: antialiased;
 }
 
 .card {
-  @apply bg-charbon-900 border border-or-900/30 rounded-xl p-5 shadow-lg;
+  @apply bg-charbon-900 border border-or-900/10 rounded-xl p-4 sm:p-5 shadow-soft;
 }
 
 .btn-primary {
-  @apply bg-gradient-to-r from-or-400 to-or-600 text-charbon-950 font-semibold px-4 py-2 rounded-lg hover:brightness-110 transition disabled:opacity-50;
+  @apply bg-gradient-to-r from-or-400 to-or-600 text-white font-medium tracking-wide px-4 py-2 rounded-lg
+         shadow-sm hover:shadow-md hover:brightness-105 active:brightness-95 transition-all duration-150
+         disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .btn-secondary {
-  @apply bg-charbon-800 text-or-300 border border-or-700/40 font-medium px-4 py-2 rounded-lg hover:bg-charbon-800/70 transition;
+  @apply bg-transparent text-or-600 border border-or-600/40 font-medium tracking-wide px-4 py-2 rounded-lg
+         hover:bg-or-50 transition-all duration-150;
 }
 
 .input-champ {
-  @apply w-full bg-charbon-800 border border-or-900/40 rounded-lg px-3 py-2 text-charbon-50 placeholder:text-charbon-100/40 focus:outline-none focus:ring-2 focus:ring-or-500;
+  @apply w-full bg-charbon-800/60 border border-or-900/15 rounded-lg px-3 py-2 text-charbon-50
+         placeholder:text-charbon-100/50 focus:outline-none focus:ring-2 focus:ring-or-400/50 focus:border-or-400
+         transition-all duration-150;
 }
 
 .titre-or {
-  @apply font-serif text-or-300;
+  @apply font-serif text-or-600 tracking-wide;
 }
+
+/* Barre de défilement plus discrète, assortie au thème */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(156, 122, 38, 0.25); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(156, 122, 38, 0.4); }
