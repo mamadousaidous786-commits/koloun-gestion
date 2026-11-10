@@ -17,3 +17,10 @@ Application web : React (client/) + Node/Express (server/) + MySQL (database/).
 
 ## Mise à jour d'une base existante (depuis la v6)
 Exécuter UNE SEULE FOIS `database/migration_v7.sql` sur la base : elle ajoute les nouvelles tables sans toucher aux données.
+
+
+## Version 8
+- **Base de données** : exécuter UNE FOIS `database/migration_v8.sql` (groupes de commande) dans HeidiSQL.
+- **Serveur** : `cd server` puis `npm install` (nouveau paquet : compression).
+- **Installation de l'application** : bouton « Installer l'application » (menu latéral et page de connexion).
+  Android / ordinateur : Chrome ou Edge ; iPhone : Safari > Partager > « Sur l'écran d'accueil ».

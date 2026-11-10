@@ -139,6 +139,17 @@ CREATE TABLE moyens_paiement (
 -- ---------------------------------------------------------
 -- COMMANDES (commandes passées auprès des fournisseurs)
 -- ---------------------------------------------------------
+CREATE TABLE groupes_commande (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    nom VARCHAR(150) NOT NULL,
+    date_commande DATE NOT NULL,
+    transport DECIMAL(12,2) DEFAULT 0,
+    transport_valide TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE
+);
+
 CREATE TABLE commandes (
     id INT AUTO_INCREMENT PRIMARY KEY,
     boutique_id INT NOT NULL,
@@ -154,9 +165,11 @@ CREATE TABLE commandes (
     montant_realise DECIMAL(12,2) DEFAULT 0,
     statut ENUM('en_cours','amortie','annulee') DEFAULT 'en_cours',
     date_commande DATE NOT NULL,
+    groupe_id INT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE,
-    FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id)
+    FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
+    FOREIGN KEY (groupe_id) REFERENCES groupes_commande(id) ON DELETE SET NULL
 );
 
 -- ---------------------------------------------------------

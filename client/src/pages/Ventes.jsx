@@ -7,7 +7,7 @@ import { listerProduits } from '../services/produitService';
 import { listerClients } from '../services/clientService';
 import { creerVente, listerVentes, genererRecu, supprimerVente } from '../services/venteService';
 import { urlFichier } from '../utils/fichiers';
-import { formaterGNF, lienWhatsApp } from '../utils/format';
+import { formaterGNF, lienWhatsApp, aujourdhui } from '../utils/format';
 import { useAuth } from '../context/AuthContext';
 
 const MOYENS_PAIEMENT = [
@@ -27,13 +27,16 @@ export default function Ventes() {
   const [clientId, setClientId] = useState('');
   const [observation, setObservation] = useState('');
   const [ventes, setVentes] = useState([]);
+  const [jour, setJour] = useState(aujourdhui()); // administrateur : peut consulter un autre jour
 
   const charger = () => {
     listerProduits().then(setProduits).catch(() => {});
-    listerVentes().then(setVentes).catch(() => {});
+    listerVentes(estAdmin ? { jour } : undefined).then(setVentes).catch(() => {});
   };
   useEffect(() => {
     charger();
+  }, [jour]);
+  useEffect(() => {
     listerClients().then(setClients).catch(() => {});
   }, []);
 
@@ -154,7 +157,7 @@ export default function Ventes() {
                 <div key={p.id} className="bg-white border border-slate-200 rounded-xl overflow-visible hover:border-blue-400 hover:shadow-md transition flex flex-col">
                   <div className="w-full h-24 bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0 rounded-t-xl">
                     {variante?.image ? (
-                      <img src={urlFichier(variante.image)} alt={p.nom} className="w-full h-full object-cover" />
+                      <img loading="lazy" decoding="async" src={urlFichier(variante.image)} alt={p.nom} className="w-full h-full object-contain" />
                     ) : (
                       <FiImage className="text-slate-300" size={24} />
                     )}
@@ -167,7 +170,7 @@ export default function Ventes() {
                           key={v.id} type="button" onClick={() => choisirVariante(p.id, i)}
                           className={`w-8 h-8 rounded-md flex-shrink-0 overflow-hidden border-2 ${i === indexVariante ? 'border-blue-600' : 'border-transparent'}`}
                         >
-                          <img src={urlFichier(v.image)} alt="" className="w-full h-full object-cover" />
+                          <img loading="lazy" decoding="async" src={urlFichier(v.image)} alt="" className="w-full h-full object-contain" />
                         </button>
                       ))}
                     </div>
@@ -210,7 +213,7 @@ export default function Ventes() {
               <div key={a.produit_taille_id} className="bg-slate-50 rounded-xl p-2.5 text-sm">
                 <div className="flex items-center gap-2">
                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-white flex-shrink-0 flex items-center justify-center">
-                    {a.image ? <img src={urlFichier(a.image)} alt="" className="w-full h-full object-cover" /> : <FiImage className="text-slate-300" size={16} />}
+                    {a.image ? <img loading="lazy" decoding="async" src={urlFichier(a.image)} alt="" className="w-full h-full object-contain" /> : <FiImage className="text-slate-300" size={16} />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-slate-900 text-xs font-semibold truncate">{a.nom} — {a.taille}</p>
@@ -253,9 +256,19 @@ export default function Ventes() {
         </div>
       </div>
 
-      {/* Historique des ventes */}
+      {/* Ventes du jour : chaque utilisateur retrouve ses ventes d'aujourd'hui et peut réimprimer un reçu */}
       <div className="card mt-6 overflow-x-auto">
-        <h2 className="font-semibold text-slate-900 mb-4">Historique des ventes</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="font-semibold text-slate-900">
+              {estAdmin ? (jour === aujourdhui() ? "Ventes d'aujourd'hui" : `Ventes du ${new Date(jour).toLocaleDateString('fr-FR')}`) : 'Mes ventes du jour'}
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {ventes.length} vente(s) · total <b className="text-blue-700">{formaterGNF(ventes.reduce((a, v) => a + Number(v.montant_total), 0))}</b> · imprimez ou renvoyez un reçu à tout moment
+            </p>
+          </div>
+          {estAdmin && <input type="date" value={jour} max={aujourdhui()} onChange={(e) => setJour(e.target.value || aujourdhui())} className="input-champ !w-auto" />}
+        </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-slate-500 border-b border-slate-100">
@@ -293,7 +306,7 @@ export default function Ventes() {
                 )}
               </tr>
             ))}
-            {ventes.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-slate-400">Aucune vente pour le moment.</td></tr>}
+            {ventes.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-slate-400">Aucune vente {estAdmin && jour !== aujourdhui() ? 'ce jour-là' : "aujourd'hui"}.</td></tr>}
           </tbody>
         </table>
       </div>

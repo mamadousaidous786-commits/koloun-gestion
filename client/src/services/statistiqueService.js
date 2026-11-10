@@ -5,3 +5,4 @@ export const dashboardUtilisateur = () => api.get('/statistiques/dashboard-utili
 export const produitsPlusVendus = () => api.get('/statistiques/produits-plus-vendus').then((r) => r.data);
 export const rechercheIntelligente = (terme) => api.get('/statistiques/recherche', { params: { terme } }).then((r) => r.data);
 export const comptabilite = (date) => api.get('/statistiques/comptabilite', { params: { date } }).then((r) => r.data);
+export const graphiques = () => api.get('/statistiques/graphiques').then((r) => r.data);

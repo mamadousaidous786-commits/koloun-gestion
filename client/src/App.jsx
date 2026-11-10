@@ -25,6 +25,29 @@ const Cloture = lazy(() => import('./pages/Cloture'));
 const Rapport = lazy(() => import('./pages/Rapport'));
 const Sauvegarde = lazy(() => import('./pages/Sauvegarde'));
 
+// Télécharge toutes les pages en arrière-plan : les changements d'onglet sont instantanés
+const precharger = () => Promise.all([
+  import('./pages/DashboardAdmin'),
+  import('./pages/DashboardUtilisateur'),
+  import('./pages/Produits'),
+  import('./pages/Ventes'),
+  import('./pages/Commandes'),
+  import('./pages/Utilisateurs'),
+  import('./pages/Comptabilite'),
+  import('./pages/Notifications'),
+  import('./pages/Statistiques'),
+  import('./pages/CommandesSpeciales'),
+  import('./pages/Clients'),
+  import('./pages/Dettes'),
+  import('./pages/Depenses'),
+  import('./pages/Cloture'),
+  import('./pages/Rapport'),
+  import('./pages/Sauvegarde')
+]).catch(() => {});
+if (typeof window !== 'undefined') {
+  (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(precharger);
+}
+
 function TableauDeBordRouteur() {
   const { estAdmin } = useAuth();
   return estAdmin ? <DashboardAdmin /> : <DashboardUtilisateur />;

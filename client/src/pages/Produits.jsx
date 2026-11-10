@@ -220,12 +220,12 @@ export default function Produits() {
         {produits.map((p) => (
           <div key={p.id} className="card p-0 overflow-hidden">
             <div
-              className="w-full h-36 bg-charbon-800 flex items-center justify-center overflow-hidden relative cursor-pointer"
+              className="w-full min-h-[9rem] bg-slate-50 flex items-center justify-center overflow-hidden relative cursor-pointer"
               onClick={() => setProduitDetail(p)}
               title="Voir toutes les photos et informations"
             >
               {imagePrincipale(p) ? (
-                <img src={urlFichier(imagePrincipale(p))} alt={p.nom} className="w-full h-full object-cover" />
+                <img loading="lazy" decoding="async" src={urlFichier(imagePrincipale(p))} alt={p.nom} className="w-full h-auto max-h-72 object-contain" />
               ) : (
                 <FiImage className="text-charbon-100/30" size={32} />
               )}
@@ -269,7 +269,7 @@ export default function Produits() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(produitDetail.ProduitVariantes || []).map((v) => (
                 <div key={v.id} className="bg-charbon-800 rounded-lg overflow-hidden">
-                  <img src={urlFichier(v.image)} alt="" className="w-full h-40 object-cover" />
+                  <img loading="lazy" decoding="async" src={urlFichier(v.image, 900)} alt="" className="w-full h-auto max-h-96 object-contain bg-slate-50" />
                   <div className="p-2 flex flex-wrap gap-1">
                     {(v.ProduitTailles || []).map((t) => (
                       <span key={t.id} className={`text-xs px-1.5 py-0.5 rounded ${t.quantite === 0 ? 'bg-red-500/15 text-red-500' : t.quantite <= t.seuil_alerte ? 'bg-yellow-500/15 text-yellow-600' : 'bg-charbon-900 text-charbon-100/70'}`}>
@@ -304,8 +304,8 @@ export default function Produits() {
                 <div className="space-y-3">
                   {formulaire.variantesExistantes.map((v) => (
                     <div key={v.id} className="flex gap-3 bg-charbon-800 rounded-lg p-2">
-                      <div className="relative w-20 h-20 flex-shrink-0 rounded overflow-hidden">
-                        <img src={urlFichier(v.image)} alt="" className="w-full h-full object-cover" />
+                      <div className="relative w-20 h-20 flex-shrink-0 rounded overflow-hidden bg-slate-100">
+                        <img loading="lazy" decoding="async" src={urlFichier(v.image)} alt="" className="w-full h-full object-contain" />
                         <button type="button" onClick={() => retirerVarianteExistante(v.id)} className="absolute top-0.5 right-0.5 bg-charbon-950/80 text-charbon-50 rounded-full p-0.5">
                           <FiX size={12} />
                         </button>
@@ -329,7 +329,7 @@ export default function Produits() {
                   {formulaire.nouvellesVariantes.map((v, index) => (
                     <div key={index} className="flex gap-3 bg-charbon-800 rounded-lg p-2">
                       <div className="relative w-20 h-20 flex-shrink-0 rounded overflow-hidden">
-                        <img src={v.apercu} alt="" className="w-full h-full object-cover" />
+                        <img src={v.apercu} alt="" className="w-full h-full object-contain" />
                         <button type="button" onClick={() => retirerNouvelleVariante(index)} className="absolute top-0.5 right-0.5 bg-charbon-950/80 text-charbon-50 rounded-full p-0.5">
                           <FiX size={12} />
                         </button>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 import logo from '../assets/logo.jpeg';
+import { useInstallation } from '../utils/pwa';
 
 export default function Connexion() {
   const [email, setEmail] = useState('');
@@ -10,6 +11,7 @@ export default function Connexion() {
   const [chargement, setChargement] = useState(false);
   const { connexion } = useAuth();
   const navigate = useNavigate();
+  const { peutInstaller, ios, installer } = useInstallation();
 
   const soumettre = async (e) => {
     e.preventDefault();
@@ -66,6 +68,12 @@ export default function Connexion() {
             </button>
             {chargement && <p className="text-xs text-slate-400 text-center">Le serveur peut mettre jusqu'à 30 secondes à se réveiller.</p>}
           </form>
+          {(peutInstaller || ios) && (
+            <button type="button" onClick={() => (peutInstaller ? installer() : alert("Sur iPhone : touchez Partager dans Safari, puis « Sur l'écran d'accueil »."))}
+              className="mt-4 w-full text-sm font-medium text-blue-700 hover:text-blue-900">
+              📲 Installer l'application sur cet appareil
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -1,15 +1,20 @@
 import React, { Suspense, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   FiGrid, FiBox, FiShoppingCart, FiUsers, FiTruck, FiBarChart2, FiBell, FiLogOut, FiDollarSign,
   FiMenu, FiX, FiStar, FiUser, FiCreditCard, FiFileText, FiLock, FiDatabase, FiTrendingDown,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import logo from '../assets/logo.jpeg';
+import ErreurLimite from '../components/ErreurLimite';
+import BoutonInstaller from '../components/BoutonInstaller';
 
 export default function LayoutPrincipal() {
   const { utilisateur, deconnexion, estAdmin } = useAuth();
   const [menuOuvert, setMenuOuvert] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const seDeconnecter = () => { deconnexion(); navigate('/connexion', { replace: true }); };
   const fermerMenu = () => setMenuOuvert(false);
 
   const lien = ({ isActive }) =>
@@ -85,10 +90,12 @@ export default function LayoutPrincipal() {
           </Section>
         </nav>
 
+        <BoutonInstaller className="px-3" />
+
         <div className="p-4 m-3 rounded-2xl bg-white/10">
           <p className="text-sm text-white font-semibold truncate">{utilisateur?.nom} {utilisateur?.prenom}</p>
           <p className="text-xs text-blue-200/60 mb-3 capitalize truncate">{utilisateur?.role} · {utilisateur?.boutique}</p>
-          <button onClick={deconnexion} className="w-full flex items-center justify-center gap-2 text-sm font-medium text-white bg-white/10 hover:bg-white/20 rounded-xl py-2 transition">
+          <button onClick={seDeconnecter} className="w-full flex items-center justify-center gap-2 text-sm font-medium text-white bg-white/10 hover:bg-white/20 rounded-xl py-2 transition">
             <FiLogOut /> Déconnexion
           </button>
         </div>
@@ -105,7 +112,7 @@ export default function LayoutPrincipal() {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
           <div className="max-w-7xl mx-auto">
             <Suspense fallback={<div className="flex justify-center py-24"><div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" /></div>}>
-              <Outlet />
+              <ErreurLimite cle={location.pathname}><Outlet /></ErreurLimite>
             </Suspense>
           </div>
         </main>

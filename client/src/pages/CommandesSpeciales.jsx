@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { FiPlus, FiSearch, FiStar, FiTrash2, FiImage, FiCalendar, FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { FiPlus, FiPrinter, FiSearch, FiStar, FiTrash2, FiImage, FiCalendar, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import EnTete from '../components/EnTete';
 import Modal from '../components/Modal';
 import ChampClient from '../components/ChampClient';
 import BoutonsContact from '../components/BoutonsContact';
 import {
   listerCommandesSpeciales, creerCommandeSpeciale, changerStatutCommandeSpeciale,
-  ajouterPaiementCommandeSpeciale, supprimerCommandeSpeciale,
+  ajouterPaiementCommandeSpeciale, supprimerCommandeSpeciale, recuCommandeSpeciale,
 } from '../services/commandeSpecialeService';
 import { listerClients } from '../services/clientService';
 import { useAuth } from '../context/AuthContext';
@@ -96,6 +96,19 @@ export default function CommandesSpeciales() {
     }
   };
 
+  // L'onglet est ouvert au clic (sinon le téléphone bloque l'ouverture), puis rempli avec le PDF
+  const imprimerRecu = async (commande) => {
+    const onglet = window.open('', '_blank');
+    try {
+      const lien = await recuCommandeSpeciale(commande.id);
+      if (onglet) onglet.location.href = lien;
+      else window.location.href = lien;
+    } catch {
+      toast.error('Impossible de générer le reçu.');
+      if (onglet) onglet.close();
+    }
+  };
+
   const changerStatut = async (commande, statut) => {
     if (statut === 'livree' && commande.reste > 0 &&
       !confirm(`Il reste ${formaterGNF(commande.reste)} à payer. Marquer quand même comme livrée ?`)) return;
@@ -159,7 +172,7 @@ export default function CommandesSpeciales() {
             <div key={c.id} className="card">
               <div className="flex gap-3">
                 <div className="w-20 h-20 rounded-xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
-                  {c.image ? <img src={urlFichier(c.image)} alt="" className="w-full h-full object-cover" /> : <FiImage className="text-slate-300" size={24} />}
+                  {c.image ? <img loading="lazy" decoding="async" src={urlFichier(c.image)} alt="" className="w-full h-full object-contain" /> : <FiImage className="text-slate-300" size={24} />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
@@ -194,6 +207,9 @@ export default function CommandesSpeciales() {
                 {c.reste > 0 && c.statut !== 'annulee' && (
                   <button onClick={() => setPaiement({ commande: c, montant: c.reste, moyen_paiement_id: 3, note: '' })} className="btn-primary !py-2 text-xs">Encaisser</button>
                 )}
+                <button onClick={() => imprimerRecu(c)} className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg px-2.5 py-2">
+                  <FiPrinter size={13} /> Reçu
+                </button>
                 <BoutonsContact
                   telephone={c.client_telephone}
                   message={c.statut === 'arrivee'
