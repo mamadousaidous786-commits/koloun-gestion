@@ -16,8 +16,16 @@ const statistiqueRoutes = require('./routes/statistiqueRoutes');
 const utilisateurRoutes = require('./routes/utilisateurRoutes');
 const fournisseurRoutes = require('./routes/fournisseurRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const clientRoutes = require('./routes/clientRoutes');
+const commandeSpecialeRoutes = require('./routes/commandeSpecialeRoutes');
+const detteRoutes = require('./routes/detteRoutes');
+const depenseRoutes = require('./routes/depenseRoutes');
+const clotureRoutes = require('./routes/clotureRoutes');
+const rapportRoutes = require('./routes/rapportRoutes');
+const sauvegardeRoutes = require('./routes/sauvegardeRoutes');
 
 const app = express();
+app.set('trust proxy', 1); // derrière le proxy de Render : adresses https correctes
 
 app.use(cors());
 app.use(express.json());
@@ -33,6 +41,13 @@ app.use('/api/recus', recuRoutes);
 app.use('/api/commandes', commandeRoutes);
 app.use('/api/statistiques', statistiqueRoutes);
 app.use('/api/utilisateurs', utilisateurRoutes);
+app.use('/api/clients', clientRoutes);
+app.use('/api/commandes-speciales', commandeSpecialeRoutes);
+app.use('/api/dettes', detteRoutes);
+app.use('/api/depenses', depenseRoutes);
+app.use('/api/clotures', clotureRoutes);
+app.use('/api/rapports', rapportRoutes);
+app.use('/api/sauvegarde', sauvegardeRoutes);
 app.use('/api', fournisseurRoutes); // /api/fournisseurs
 app.use('/api/notifications', notificationRoutes);
 

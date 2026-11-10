@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { sequelize, Vente, DetailVente, ProduitTaille, ProduitVariante, Produit, MoyenPaiement, Utilisateur, Recu, Notification } = require('../models');
+const { sequelize, Vente, DetailVente, ProduitTaille, ProduitVariante, Produit, MoyenPaiement, Utilisateur, Recu, Notification, Client } = require('../models');
 const { Op } = require('sequelize');
 
 // Génère un numéro de reçu unique : KL-YYYYMMDD-XXXX
@@ -18,6 +18,7 @@ exports.creerVente = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { articles, moyen_paiement_id, observation } = req.body;
+    let client_id = req.body.client_id || null;
     // articles = [{ produit_taille_id, quantite, prix_applique }]
 
     if (!articles || articles.length === 0) {
@@ -44,12 +45,19 @@ exports.creerVente = async (req, res) => {
       detailsAVerifier.push({ taille, sousTotal });
     }
 
+    // Client facultatif : on vérifie qu'il appartient bien à cette boutique
+    if (client_id) {
+      const client = await Client.findOne({ where: { id: client_id, boutique_id: req.utilisateur.boutique_id }, transaction });
+      if (!client) client_id = null;
+    }
+
     const numeroRecu = await genererNumeroRecu();
 
     const vente = await Vente.create({
       boutique_id: req.utilisateur.boutique_id,
       utilisateur_id: req.utilisateur.id,
       moyen_paiement_id,
+      client_id,
       numero_recu: numeroRecu,
       montant_total: montantTotal,
       observation,
@@ -124,6 +132,7 @@ exports.listerVentes = async (req, res) => {
         { model: DetailVente, include: [{ model: ProduitTaille, include: [{ model: ProduitVariante, include: [Produit] }] }] },
         { model: MoyenPaiement },
         { model: Utilisateur, attributes: ['id', 'nom', 'prenom'] },
+        { model: Client, attributes: ['id', 'nom', 'telephone'] },
       ],
       order: [['date_vente', 'DESC']],
     });

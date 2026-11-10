@@ -1,62 +1,67 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import { FiDollarSign, FiShoppingBag, FiAlertTriangle, FiTrendingDown, FiBell } from 'react-icons/fi';
+import {
+  FiDollarSign, FiShoppingBag, FiAlertTriangle, FiTrendingDown, FiBell, FiStar, FiCreditCard, FiGrid,
+} from 'react-icons/fi';
+import EnTete from '../components/EnTete';
+import Stat from '../components/Stat';
 import { dashboardAdmin } from '../services/statistiqueService';
+import { formaterGNF } from '../utils/format';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-function CarteStat({ icone, titre, valeur, couleur }) {
-  return (
-    <div className="card flex items-center gap-4">
-      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl ${couleur}`}>
-        {icone}
-      </div>
-      <div>
-        <p className="text-xs text-charbon-100/60">{titre}</p>
-        <p className="text-xl font-semibold text-or-200">{valeur}</p>
-      </div>
-    </div>
-  );
-}
-
 export default function DashboardAdmin() {
-  const [donnees, setDonnees] = useState(null);
+  const [d, setD] = useState(null);
 
   useEffect(() => {
-    dashboardAdmin().then(setDonnees).catch(() => {});
+    dashboardAdmin().then(setD).catch(() => {});
   }, []);
 
-  const formaterGNF = (val) => `${Number(val || 0).toLocaleString('fr-FR')} GNF`;
-
-  const donneesGraphique = donnees ? {
-    labels: donnees.ventes_par_moyen_paiement.map((v) => v.MoyenPaiement.nom),
+  const graphique = d && d.ventes_par_moyen_paiement.length > 0 ? {
+    labels: d.ventes_par_moyen_paiement.map((v) => v.MoyenPaiement.nom),
     datasets: [{
-      data: donnees.ventes_par_moyen_paiement.map((v) => v.total),
-      backgroundColor: ['#2563eb', '#1d4ed8', '#1e3a8a'],
+      data: d.ventes_par_moyen_paiement.map((v) => v.total),
+      backgroundColor: ['#2563eb', '#60a5fa', '#1e3a8a'],
       borderColor: '#ffffff',
+      borderWidth: 3,
     }],
   } : null;
 
   return (
     <div>
-      <h1 className="titre-or text-2xl mb-6">Tableau de bord — Administrateur</h1>
+      <EnTete titre="Tableau de bord" sousTitre="Vue d'ensemble de votre boutique" icone={<FiGrid />} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <CarteStat icone={<FiDollarSign />} titre="Chiffre d'affaires du jour" valeur={formaterGNF(donnees?.chiffre_affaires_jour)} couleur="bg-or-500/20 text-or-300" />
-        <CarteStat icone={<FiDollarSign />} titre="Chiffre d'affaires du mois" valeur={formaterGNF(donnees?.chiffre_affaires_mois)} couleur="bg-or-500/20 text-or-300" />
-        <CarteStat icone={<FiShoppingBag />} titre="Ventes aujourd'hui" valeur={donnees?.nombre_ventes_jour ?? '—'} couleur="bg-blue-500/20 text-blue-300" />
-        <CarteStat icone={<FiBell />} titre="Notifications non lues" valeur={donnees?.notifications_non_lues ?? '—'} couleur="bg-purple-500/20 text-purple-300" />
-        <CarteStat icone={<FiAlertTriangle />} titre="Produits en rupture" valeur={donnees?.produits_en_rupture ?? '—'} couleur="bg-red-500/20 text-red-300" />
-        <CarteStat icone={<FiTrendingDown />} titre="Produits en stock faible" valeur={donnees?.produits_stock_faible ?? '—'} couleur="bg-yellow-500/20 text-yellow-300" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
+        <Stat icone={<FiDollarSign />} titre="Chiffre d'affaires du jour" valeur={formaterGNF(d?.chiffre_affaires_jour)} teinte="bleu" />
+        <Stat icone={<FiDollarSign />} titre="Chiffre d'affaires du mois" valeur={formaterGNF(d?.chiffre_affaires_mois)} teinte="bleu" />
+        <Stat icone={<FiShoppingBag />} titre="Ventes aujourd'hui" valeur={d?.nombre_ventes_jour ?? '—'} teinte="vert" />
+        <Stat icone={<FiTrendingDown />} titre="Dépenses du mois" valeur={formaterGNF(d?.depenses_mois)} teinte="gris" />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        <Link to="/dettes" className="block hover:-translate-y-0.5 transition">
+          <Stat icone={<FiCreditCard />} titre="Dettes à récupérer" valeur={formaterGNF(d?.dettes_total_restant)}
+            detail={d ? `${d.dettes_nombre} personne(s)${d.dettes_en_retard ? ` · ${d.dettes_en_retard} en retard` : ''}` : ''}
+            teinte={d?.dettes_en_retard ? 'orange' : 'rouge'} />
+        </Link>
+        <Link to="/commandes-speciales" className="block hover:-translate-y-0.5 transition">
+          <Stat icone={<FiStar />} titre="Commandes spéciales en cours" valeur={d?.commandes_speciales_en_cours ?? '—'}
+            detail={d?.commandes_speciales_arrivees ? `${d.commandes_speciales_arrivees} arrivée(s) à remettre` : ''} teinte="violet" />
+        </Link>
+        <Link to="/produits" className="block hover:-translate-y-0.5 transition">
+          <Stat icone={<FiAlertTriangle />} titre="Ruptures / stock faible" valeur={d ? `${d.produits_en_rupture} / ${d.produits_stock_faible}` : '—'} teinte={d?.produits_en_rupture ? 'rouge' : 'orange'} />
+        </Link>
+        <Link to="/notifications" className="block hover:-translate-y-0.5 transition">
+          <Stat icone={<FiBell />} titre="Notifications non lues" valeur={d?.notifications_non_lues ?? '—'} teinte="violet" />
+        </Link>
       </div>
 
       <div className="card max-w-md">
-        <h2 className="text-or-300 font-medium mb-4">Répartition des ventes par moyen de paiement (mois)</h2>
-        {donneesGraphique && donneesGraphique.labels.length > 0 ? (
-          <Doughnut data={donneesGraphique} />
-        ) : (
-          <p className="text-charbon-100/50 text-sm">Aucune donnée pour le moment.</p>
+        <h2 className="font-semibold text-slate-900 mb-4">Ventes du mois par moyen de paiement</h2>
+        {graphique ? <Doughnut data={graphique} options={{ plugins: { legend: { position: 'bottom' } }, cutout: '65%' }} /> : (
+          <p className="text-slate-400 text-sm">Aucune vente ce mois-ci.</p>
         )}
       </div>
     </div>

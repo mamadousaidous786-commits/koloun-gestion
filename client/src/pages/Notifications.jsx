@@ -5,18 +5,9 @@ import { listerNotifications, marquerLue, supprimerNotification, supprimerToutes
 export default function Notifications() {
   const [notifications, setNotifications] = useState([]);
 
-  const charger = async () => {
-  try {
-    const data = await listerNotifications();
-    setNotifications(data);
-  } catch (error) {
-    console.error(error);
-  }
-};
+  const charger = () => listerNotifications().then(setNotifications).catch(() => {});
+  useEffect(charger, []);
 
-useEffect(() => {
-  charger();
-}, []);
   const lire = async (id) => { await marquerLue(id); charger(); };
 
   const supprimer = async (id) => {
@@ -32,7 +23,7 @@ useEffect(() => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
         <h1 className="titre-or text-2xl">Notifications</h1>
         {notifications.length > 0 && (
           <button onClick={supprimerTout} className="btn-secondary text-sm flex items-center gap-2">

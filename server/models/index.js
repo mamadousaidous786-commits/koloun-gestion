@@ -16,6 +16,13 @@ const Recu = require('./Recu');
 const Paiement = require('./Paiement');
 const Notification = require('./Notification');
 const Historique = require('./Historique');
+const Client = require('./Client');
+const CommandeSpeciale = require('./CommandeSpeciale');
+const PaiementCommandeSpeciale = require('./PaiementCommandeSpeciale');
+const Dette = require('./Dette');
+const PaiementDette = require('./PaiementDette');
+const Depense = require('./Depense');
+const ClotureCaisse = require('./ClotureCaisse');
 
 // ---- Boutique ----
 Boutique.hasMany(Utilisateur, { foreignKey: 'boutique_id' });
@@ -86,6 +93,33 @@ Notification.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id' });
 Utilisateur.hasMany(Historique, { foreignKey: 'utilisateur_id' });
 Historique.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id' });
 
+// ---- Clients, commandes spéciales, dettes ----
+Boutique.hasMany(Client, { foreignKey: 'boutique_id' });
+Client.belongsTo(Boutique, { foreignKey: 'boutique_id' });
+
+Client.hasMany(Vente, { foreignKey: 'client_id' });
+Vente.belongsTo(Client, { foreignKey: 'client_id' });
+
+Client.hasMany(CommandeSpeciale, { foreignKey: 'client_id' });
+CommandeSpeciale.belongsTo(Client, { foreignKey: 'client_id' });
+
+CommandeSpeciale.hasMany(PaiementCommandeSpeciale, { foreignKey: 'commande_speciale_id', as: 'paiements', onDelete: 'CASCADE' });
+PaiementCommandeSpeciale.belongsTo(CommandeSpeciale, { foreignKey: 'commande_speciale_id' });
+PaiementCommandeSpeciale.belongsTo(MoyenPaiement, { foreignKey: 'moyen_paiement_id' });
+
+Client.hasMany(Dette, { foreignKey: 'client_id' });
+Dette.belongsTo(Client, { foreignKey: 'client_id' });
+
+Dette.hasMany(PaiementDette, { foreignKey: 'dette_id', as: 'paiements', onDelete: 'CASCADE' });
+PaiementDette.belongsTo(Dette, { foreignKey: 'dette_id' });
+
+// ---- Dépenses et clôtures de caisse ----
+Utilisateur.hasMany(Depense, { foreignKey: 'utilisateur_id' });
+Depense.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id' });
+
+Utilisateur.hasMany(ClotureCaisse, { foreignKey: 'utilisateur_id' });
+ClotureCaisse.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id' });
+
 module.exports = {
   sequelize,
   Boutique,
@@ -104,4 +138,11 @@ module.exports = {
   Paiement,
   Notification,
   Historique,
+  Client,
+  CommandeSpeciale,
+  PaiementCommandeSpeciale,
+  Dette,
+  PaiementDette,
+  Depense,
+  ClotureCaisse,
 };

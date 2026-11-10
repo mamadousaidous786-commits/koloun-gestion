@@ -199,7 +199,7 @@ export default function Produits() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
         <h1 className="titre-or text-2xl">Produits</h1>
         {estAdmin && (
           <button onClick={ouvrirCreation} className="btn-primary flex items-center gap-2">

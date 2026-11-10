@@ -10,18 +10,8 @@ export default function Utilisateurs() {
   const [modalOuvert, setModalOuvert] = useState(false);
   const [formulaire, setFormulaire] = useState(videFormulaire);
 
- const charger = async () => {
-  try {
-    const data = await listerUtilisateurs();
-    setUtilisateurs(data);
-  } catch (error) {
-    console.error(error);
-  }
-};
-
-useEffect(() => {
-  charger();
-}, []);
+  const charger = () => listerUtilisateurs().then(setUtilisateurs).catch(() => {});
+  useEffect(charger, []);
 
   const soumettre = async (e) => {
     e.preventDefault();
@@ -41,7 +31,7 @@ useEffect(() => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
         <h1 className="titre-or text-2xl">Utilisateurs</h1>
         <button onClick={() => setModalOuvert(true)} className="btn-primary flex items-center gap-2"><FiPlus /> Nouvel utilisateur</button>
       </div>

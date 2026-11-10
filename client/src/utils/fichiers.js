@@ -1,6 +1,8 @@
-export function urlFichier(cheminRelatif) {
-  if (!cheminRelatif) return null;
-  if (cheminRelatif.startsWith('http')) return cheminRelatif; // déjà une URL Cloudinary complète
+// Les photos Cloudinary sont déjà des adresses complètes (https://...).
+// Les anciennes photos locales (/uploads/...) passent par le serveur.
+export function urlFichier(chemin) {
+  if (!chemin) return null;
+  if (/^https?:\/\//.test(chemin)) return chemin;
   const baseBackend = import.meta.env.VITE_API_URL || '';
-  return `${baseBackend}${cheminRelatif}`;
+  return `${baseBackend}${chemin}`;
 }

@@ -3,6 +3,9 @@ const router = express.Router();
 const ctrl = require('../controllers/recuController');
 const { verifierToken } = require('../middleware/auth');
 
+// Lien de partage public (WhatsApp...) : accessible sans connexion grâce à un jeton secret
+router.get('/public/:token', ctrl.recuPublic);
+
 router.use(verifierToken);
 router.get('/:vente_id/pdf', ctrl.genererRecu);
 router.get('/:vente_id/telecharger', ctrl.telechargerRecu);

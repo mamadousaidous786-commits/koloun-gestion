@@ -115,8 +115,9 @@ exports.modifierProduit = async (req, res) => {
       for (const id of idsASupprimer) {
         const variante = await ProduitVariante.findOne({ where: { id, produit_id: produit.id } });
         if (variante) {
-          const cheminFichier = path.join(__dirname, '..', variante.image);
-          fs.unlink(cheminFichier, () => {});
+          if (String(variante.image).startsWith('/uploads/')) {
+            fs.unlink(path.join(__dirname, '..', variante.image), () => {}); // fichier local uniquement
+          }
           await variante.destroy(); // cascade sur ses tailles
         }
       }
@@ -161,7 +162,7 @@ exports.modifierProduit = async (req, res) => {
         const infos = nouvellesVariantes[i] || { tailles: [] };
         const variante = await ProduitVariante.create({
           produit_id: produit.id,
-          image: fichiers[i].path,
+          image: req.files[i].path,
           description: infos.description || null,
         });
 

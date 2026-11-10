@@ -6,6 +6,7 @@ const Vente = sequelize.define('Vente', {
   boutique_id: { type: DataTypes.INTEGER, allowNull: false },
   utilisateur_id: { type: DataTypes.INTEGER, allowNull: false },
   moyen_paiement_id: { type: DataTypes.INTEGER, allowNull: false },
+  client_id: DataTypes.INTEGER,
   numero_recu: { type: DataTypes.STRING(50), unique: true },
   montant_total: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
   observation: DataTypes.STRING(255),

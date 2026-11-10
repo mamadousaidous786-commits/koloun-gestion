@@ -4,32 +4,41 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Bleu (accent) — gardé sous le nom "or" pour que toutes les pages existantes en profitent
         or: {
-          50: '#faf6ec',
-          100: '#f0e6c8',
-          200: '#e0cb8f',
-          300: '#c9a94f',
-          400: '#b4923c',
-          500: '#9c7a26',
-          600: '#836420',
-          700: '#69501a',
-          800: '#523e15',
-          900: '#3d2f14',
+          50: '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#2563eb',
+          400: '#3b82f6',
+          500: '#2563eb',
+          600: '#1d4ed8',
+          700: '#1e40af',
+          800: '#1e3a8a',
+          900: '#1e3a8a',
         },
+        // Neutres clairs : texte sombre, fonds blancs / gris très clair
         charbon: {
-          50: '#211d17',
-          100: '#6b6255',
-          800: '#f1ede4',
+          50: '#0f172a',
+          100: '#475569',
+          800: '#f1f5f9',
           900: '#ffffff',
-          950: '#faf8f4',
+          950: '#f4f7fb',
+        },
+        // Bleu marine de la barre latérale
+        marine: {
+          600: '#1b3a7a',
+          700: '#14306b',
+          800: '#0f2557',
+          900: '#0a1b42',
         },
       },
       fontFamily: {
-        serif: ['Cormorant Garamond', 'Playfair Display', 'serif'],
-        sans: ['Inter', 'sans-serif'],
+        serif: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        soft: '0 2px 20px -4px rgba(33, 29, 23, 0.08)',
+        soft: '0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -10px rgba(15, 23, 42, 0.12)',
       },
     },
   },

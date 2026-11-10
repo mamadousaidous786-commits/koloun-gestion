@@ -1,4 +1,5 @@
-const { sequelize, Vente, DetailVente, ProduitTaille, ProduitVariante, Produit, MoyenPaiement, Notification } = require('../models');
+const { sequelize, Vente, DetailVente, ProduitTaille, ProduitVariante, Produit, MoyenPaiement, Notification, Dette, PaiementDette, CommandeSpeciale, Depense } = require('../models');
+const { avecSoldeDette } = require('../utils/soldes');
 const { Op, fn, col, literal } = require('sequelize');
 
 // GET /api/statistiques/dashboard-admin
@@ -41,7 +42,24 @@ exports.dashboardAdmin = async (req, res) => {
 
     const notificationsNonLues = await Notification.count({ where: { boutique_id, lue: false } });
 
+    // ---- Dettes clients, commandes spéciales, dépenses ----
+    const dettes = (await Dette.findAll({ where: { boutique_id }, include: [{ model: PaiementDette, as: 'paiements' }] })).map(avecSoldeDette);
+    const dettesEnCours = dettes.filter((d) => !d.soldee);
+    const commandesSpecialesEnCours = await CommandeSpeciale.count({
+      where: { boutique_id, statut: { [Op.in]: ['en_attente', 'commandee', 'arrivee'] } },
+    });
+    const commandesSpecialesArrivees = await CommandeSpeciale.count({ where: { boutique_id, statut: 'arrivee' } });
+    const depensesMois = await Depense.sum('montant', {
+      where: { boutique_id, date_depense: { [Op.gte]: debutMois.toISOString().slice(0, 10) } },
+    }) || 0;
+
     res.json({
+      dettes_total_restant: dettesEnCours.reduce((a, d) => a + d.reste, 0),
+      dettes_nombre: dettesEnCours.length,
+      dettes_en_retard: dettesEnCours.filter((d) => d.en_retard).length,
+      commandes_speciales_en_cours: commandesSpecialesEnCours,
+      commandes_speciales_arrivees: commandesSpecialesArrivees,
+      depenses_mois: Number(depensesMois),
       chiffre_affaires_jour: chiffreAffairesJour,
       chiffre_affaires_mois: chiffreAffairesMois,
       nombre_ventes_jour: nombreVentesJour,

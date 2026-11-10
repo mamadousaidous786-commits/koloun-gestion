@@ -160,6 +160,20 @@ CREATE TABLE commandes (
 );
 
 -- ---------------------------------------------------------
+-- CLIENTS (fiche clients)
+-- ---------------------------------------------------------
+CREATE TABLE clients (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    nom VARCHAR(150) NOT NULL,
+    telephone VARCHAR(50),
+    adresse VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE
+);
+
+-- ---------------------------------------------------------
 -- VENTES
 -- ---------------------------------------------------------
 CREATE TABLE ventes (
@@ -167,13 +181,15 @@ CREATE TABLE ventes (
     boutique_id INT NOT NULL,
     utilisateur_id INT NOT NULL,
     moyen_paiement_id INT NOT NULL,
+    client_id INT NULL,
     numero_recu VARCHAR(50) UNIQUE,
     montant_total DECIMAL(12,2) NOT NULL,
     observation VARCHAR(255),
     date_vente DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE,
     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id),
-    FOREIGN KEY (moyen_paiement_id) REFERENCES moyens_paiement(id)
+    FOREIGN KEY (moyen_paiement_id) REFERENCES moyens_paiement(id),
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
 );
 
 -- ---------------------------------------------------------
@@ -198,6 +214,7 @@ CREATE TABLE recus (
     vente_id INT NOT NULL UNIQUE,
     chemin_pdf VARCHAR(255),
     qr_code VARCHAR(255),
+    token VARCHAR(64),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (vente_id) REFERENCES ventes(id) ON DELETE CASCADE
 );
@@ -232,6 +249,107 @@ CREATE TABLE historiques (
 );
 
 -- ---------------------------------------------------------
+-- COMMANDES SPECIALES (articles commandés pour un client)
+-- ---------------------------------------------------------
+CREATE TABLE commandes_speciales (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    client_id INT NULL,
+    client_nom VARCHAR(150) NOT NULL,
+    client_telephone VARCHAR(50),
+    article VARCHAR(200) NOT NULL,
+    details TEXT,
+    image VARCHAR(255),
+    prix_total DECIMAL(12,2) NOT NULL,
+    date_livraison_prevue DATE,
+    statut ENUM('en_attente','commandee','arrivee','livree','annulee') DEFAULT 'en_attente',
+    observation VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+);
+
+CREATE TABLE paiements_commandes_speciales (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    commande_speciale_id INT NOT NULL,
+    montant DECIMAL(12,2) NOT NULL,
+    moyen_paiement_id INT NULL,
+    note VARCHAR(255),
+    date_paiement DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (commande_speciale_id) REFERENCES commandes_speciales(id) ON DELETE CASCADE,
+    FOREIGN KEY (moyen_paiement_id) REFERENCES moyens_paiement(id)
+);
+
+-- ---------------------------------------------------------
+-- DETTES (personnes qui doivent de l'argent a la boutique)
+-- ---------------------------------------------------------
+CREATE TABLE dettes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    client_id INT NULL,
+    personne_nom VARCHAR(150) NOT NULL,
+    telephone VARCHAR(50),
+    motif VARCHAR(255),
+    montant_initial DECIMAL(12,2) NOT NULL,
+    date_dette DATE NOT NULL,
+    date_echeance DATE NULL,
+    observation VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+);
+
+CREATE TABLE paiements_dettes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dette_id INT NOT NULL,
+    montant DECIMAL(12,2) NOT NULL,
+    note VARCHAR(255),
+    date_paiement DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dette_id) REFERENCES dettes(id) ON DELETE CASCADE
+);
+
+-- ---------------------------------------------------------
+-- DEPENSES DE LA BOUTIQUE
+-- ---------------------------------------------------------
+CREATE TABLE depenses (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    utilisateur_id INT NULL,
+    categorie VARCHAR(80) NOT NULL,
+    description VARCHAR(255),
+    montant DECIMAL(12,2) NOT NULL,
+    date_depense DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE,
+    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE SET NULL
+);
+
+-- ---------------------------------------------------------
+-- CLOTURES DE CAISSE (une par jour)
+-- ---------------------------------------------------------
+CREATE TABLE clotures_caisse (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    utilisateur_id INT NULL,
+    date_cloture DATE NOT NULL,
+    attendu_cash DECIMAL(12,2) DEFAULT 0,
+    attendu_om DECIMAL(12,2) DEFAULT 0,
+    attendu_pm DECIMAL(12,2) DEFAULT 0,
+    compte_cash DECIMAL(12,2),
+    compte_om DECIMAL(12,2),
+    compte_pm DECIMAL(12,2),
+    ecart_cash DECIMAL(12,2),
+    ecart_om DECIMAL(12,2),
+    ecart_pm DECIMAL(12,2),
+    note VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_cloture_jour (boutique_id, date_cloture),
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE,
+    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE SET NULL
+);
+
+-- ---------------------------------------------------------
 -- DONNEES INITIALES
 -- ---------------------------------------------------------
 INSERT INTO roles (nom, description) VALUES
@@ -242,7 +360,7 @@ INSERT INTO moyens_paiement (nom) VALUES
 ('Orange Money'), ('Paiement Marchand'), ('Cash');
 
 INSERT INTO boutiques (nom, adresse, telephone) VALUES
-('Koloun Luxure', 'Conakry,lambanyi forage dadis', '+224 627 25 84 97 ');
+('Koloun Luxure', 'Lambanyi, Forage Dadis, Conakry, Guinée', '+224 627 25 84 97');
 
 -- Compte administrateur par défaut
 -- Email: admin@koloungestion.com | Mot de passe: Admin123

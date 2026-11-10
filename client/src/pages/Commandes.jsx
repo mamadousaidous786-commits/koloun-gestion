@@ -62,7 +62,7 @@ export default function Commandes() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
         <h1 className="titre-or text-2xl flex items-center gap-2"><FiTruck /> Commandes</h1>
         <button onClick={() => setModalOuvert(true)} className="btn-primary flex items-center gap-2">
           <FiPlus /> Nouvelle commande
