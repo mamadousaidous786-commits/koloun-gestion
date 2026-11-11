@@ -86,15 +86,23 @@ exports.validerTransport = async (req, res) => {
   }
 };
 
-// DELETE /api/groupes-commande/:id  (seulement si le transport n'est pas encore validé)
+// DELETE /api/groupes-commande/:id?commandes=1
+// Supprimable à tout moment, même après validation du transport.
+//  - commandes=1 : le groupe ET toutes ses commandes sont supprimés
+//  - sinon       : seul le groupe disparaît, les commandes sont conservées (avec leur transport déjà réparti)
 exports.supprimer = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    const groupe = await GroupeCommande.findOne({ where: { id: req.params.id, boutique_id: req.utilisateur.boutique_id } });
-    if (!groupe) return res.status(404).json({ message: 'Groupe introuvable.' });
-    if (groupe.transport_valide) return res.status(400).json({ message: 'Un groupe dont le transport est validé ne peut plus être supprimé.' });
-    await groupe.destroy(); // ses commandes restent, simplement détachées
+    const groupe = await GroupeCommande.findOne({ where: { id: req.params.id, boutique_id: req.utilisateur.boutique_id }, transaction: t });
+    if (!groupe) { await t.rollback(); return res.status(404).json({ message: 'Groupe introuvable.' }); }
+    if (req.query.commandes === '1') {
+      await Commande.destroy({ where: { groupe_id: groupe.id, boutique_id: groupe.boutique_id }, transaction: t });
+    }
+    await groupe.destroy({ transaction: t });
+    await t.commit();
     res.json({ message: 'Groupe supprimé.' });
   } catch (error) {
+    await t.rollback().catch(() => {});
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
   }
 };

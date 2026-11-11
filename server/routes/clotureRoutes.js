@@ -7,5 +7,6 @@ router.use(verifierToken, autoriserRoles('admin'));
 router.get('/apercu', ctrl.apercu);
 router.get('/', ctrl.lister);
 router.post('/', ctrl.enregistrer);
+router.delete('/:id', ctrl.supprimer);
 
 module.exports = router;

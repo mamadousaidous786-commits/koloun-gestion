@@ -88,3 +88,15 @@ exports.lister = async (req, res) => {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
   }
 };
+
+// DELETE /api/clotures/:id  -- supprime une clôture (on peut ensuite la refaire)
+exports.supprimer = async (req, res) => {
+  try {
+    const cloture = await ClotureCaisse.findOne({ where: { id: req.params.id, boutique_id: req.utilisateur.boutique_id } });
+    if (!cloture) return res.status(404).json({ message: 'Clôture introuvable.' });
+    await cloture.destroy();
+    res.json({ message: 'Clôture supprimée.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
+  }
+};

@@ -96,8 +96,14 @@ export default function Commandes() {
   };
 
   const supprimerLeGroupe = async (g) => {
-    if (!confirm(`Supprimer le groupe « ${g.nom} » ? Ses commandes sont conservées (détachées).`)) return;
-    try { await supprimerGroupe(g.id); charger(); } catch (err) { toast.error(err.response?.data?.message || 'Erreur.'); }
+    // 1re question : tout supprimer. Si on refuse : on propose de supprimer seulement le groupe.
+    let avecCommandes = false;
+    if (confirm(`Supprimer le groupe « ${g.nom} » ET toutes ses commandes ?\n\nOK = tout supprimer\nAnnuler = autres choix`)) {
+      avecCommandes = true;
+    } else if (!confirm(`Supprimer seulement le groupe « ${g.nom} » ?\nSes commandes sont conservées (elles gardent leur transport).`)) {
+      return;
+    }
+    try { await supprimerGroupe(g.id, avecCommandes); toast.success('Groupe supprimé.'); charger(); } catch (err) { toast.error(err.response?.data?.message || 'Erreur.'); }
   };
 
   const Statut = ({ c }) => (
@@ -144,7 +150,7 @@ export default function Commandes() {
                     {g.transport_valide
                       ? <span className="badge bg-emerald-400/20 text-emerald-100"><FiLock size={11} /> Transport validé</span>
                       : <span className="badge bg-amber-400/20 text-amber-100">Transport à valider</span>}
-                    {!g.transport_valide && <button onClick={() => supprimerLeGroupe(g)} className="p-2 text-blue-100/60 hover:text-white" title="Supprimer le groupe"><FiTrash2 size={15} /></button>}
+                    <button onClick={() => supprimerLeGroupe(g)} className="p-2 text-blue-100/60 hover:text-white" title="Supprimer le groupe"><FiTrash2 size={15} /></button>
                   </div>
                 </div>
 
@@ -172,7 +178,7 @@ export default function Commandes() {
                             <td className="py-2.5 text-right whitespace-nowrap">{g.transport_valide ? formaterGNF(c.transport) : <span className="text-slate-300">—</span>}</td>
                             <td className="py-2.5 text-right whitespace-nowrap font-semibold text-blue-700">{g.transport_valide ? formaterGNF(c.cout_reel) : <span className="text-slate-300">—</span>}</td>
                             <td className="py-2.5 text-right">
-                              {!g.transport_valide && <button onClick={() => supprimerCmd(c)} className="text-slate-300 hover:text-red-600"><FiTrash2 size={14} /></button>}
+                              <button onClick={() => supprimerCmd(c)} className="text-slate-300 hover:text-red-600" title="Supprimer cette commande"><FiTrash2 size={14} /></button>
                             </td>
                           </tr>
                         ))}

@@ -119,10 +119,6 @@ exports.supprimerCommande = async (req, res) => {
       where: { id: req.params.id, boutique_id: req.utilisateur.boutique_id },
     });
     if (!commande) return res.status(404).json({ message: 'Commande introuvable.' });
-    if (commande.groupe_id) {
-      const groupe = await GroupeCommande.findByPk(commande.groupe_id);
-      if (groupe && groupe.transport_valide) return res.status(400).json({ message: 'Le transport du groupe est validé : cette commande ne peut plus être supprimée.' });
-    }
     await commande.destroy();
     res.json({ message: 'Commande supprimée avec succès.' });
   } catch (error) {

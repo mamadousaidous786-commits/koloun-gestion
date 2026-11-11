@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
-import { FiLock, FiCheckCircle, FiAlertTriangle } from 'react-icons/fi';
+import { FiLock, FiCheckCircle, FiAlertTriangle, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import EnTete from '../components/EnTete';
-import { apercuCloture, enregistrerCloture, listerClotures } from '../services/clotureService';
+import { apercuCloture, enregistrerCloture, listerClotures, supprimerCloture } from '../services/clotureService';
 import { formaterGNF, formaterDate, aujourdhui } from '../utils/format';
 
 const LIGNES = [
@@ -56,6 +56,22 @@ export default function Cloture() {
     }
   };
 
+  const supprimer = async (id, jour) => {
+    if (!confirm(`Supprimer la clôture du ${formaterDate(jour)} ? Vous pourrez la refaire.`)) return;
+    try {
+      await supprimerCloture(id);
+      toast.success('Clôture supprimée.');
+      chargerHistorique();
+      if (String(jour).slice(0, 10) === date) {
+        setComptes({ compte_cash: '', compte_om: '', compte_pm: '' });
+        setNote('');
+        apercuCloture(date).then(setApercu).catch(() => {});
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erreur.');
+    }
+  };
+
   return (
     <div>
       <EnTete titre="Clôture de caisse" sousTitre="Comparez ce que les ventes annoncent avec l'argent réellement compté" icone={<FiLock />}>
@@ -90,7 +106,12 @@ export default function Cloture() {
             <label className="etiquette">Note (facultatif)</label>
             <input className="input-champ" placeholder="Ex : 5 000 GNF donnés en monnaie au client" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-          <div className="flex justify-end mt-4"><button type="submit" className="btn-primary"><FiLock /> Clôturer la caisse</button></div>
+          <div className="flex flex-wrap justify-end gap-2 mt-4">
+            {apercu.cloture_existante && (
+              <button type="button" onClick={() => supprimer(apercu.cloture_existante.id, date)} className="btn-danger"><FiTrash2 /> Supprimer la clôture</button>
+            )}
+            <button type="submit" className="btn-primary"><FiLock /> {apercu.cloture_existante ? 'Enregistrer les modifications' : 'Clôturer la caisse'}</button>
+          </div>
         </form>
       )}
 
@@ -99,7 +120,7 @@ export default function Cloture() {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-slate-500 border-b border-slate-100">
-              <th className="pb-2">Date</th><th className="pb-2">Cash attendu</th><th className="pb-2">Cash compté</th><th className="pb-2">Écart cash</th><th className="pb-2">Par</th>
+              <th className="pb-2">Date</th><th className="pb-2">Cash attendu</th><th className="pb-2">Cash compté</th><th className="pb-2">Écart cash</th><th className="pb-2">Par</th><th className="pb-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -110,9 +131,13 @@ export default function Cloture() {
                 <td className="py-2.5">{formaterGNF(c.compte_cash)}</td>
                 <td className="py-2.5"><Ecart valeur={c.ecart_cash} /></td>
                 <td className="py-2.5 text-slate-500">{c.Utilisateur?.nom}</td>
+                <td className="py-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => { setDate(String(c.date_cloture).slice(0, 10)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-2 text-slate-400 hover:text-blue-700" title="Modifier"><FiEdit2 size={14} /></button>
+                  <button onClick={() => supprimer(c.id, c.date_cloture)} className="p-2 text-slate-400 hover:text-red-600" title="Supprimer"><FiTrash2 size={14} /></button>
+                </td>
               </tr>
             ))}
-            {historique.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-slate-400">Aucune clôture enregistrée.</td></tr>}
+            {historique.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-slate-400">Aucune clôture enregistrée.</td></tr>}
           </tbody>
         </table>
       </div>
