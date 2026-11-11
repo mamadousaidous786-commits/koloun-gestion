@@ -18,13 +18,15 @@ function urlBase(req) {
 // GET /api/recus/:vente_id/pdf -- Génère le reçu, renvoie le chemin du PDF et un lien de partage permanent
 exports.genererRecu = async (req, res) => {
   try {
-    const vente = await Vente.findOne({
-      where: { id: req.params.vente_id, boutique_id: req.utilisateur.boutique_id },
-      include: INCLUS_VENTE,
-    });
+    const [vente, boutique] = await Promise.all([
+      Vente.findOne({
+        where: { id: req.params.vente_id, boutique_id: req.utilisateur.boutique_id },
+        include: INCLUS_VENTE,
+      }),
+      Boutique.findByPk(req.utilisateur.boutique_id),
+    ]);
     if (!vente) return res.status(404).json({ message: 'Vente introuvable.' });
 
-    const boutique = await Boutique.findByPk(req.utilisateur.boutique_id);
     const cheminRelatif = genererRecuPDF(vente, boutique);
 
     let recu = vente.Recu;

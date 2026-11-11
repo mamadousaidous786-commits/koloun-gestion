@@ -1,4 +1,4 @@
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   FiGrid, FiBox, FiShoppingCart, FiUsers, FiTruck, FiBarChart2, FiBell, FiLogOut, FiDollarSign,
@@ -8,11 +8,24 @@ import { useAuth } from '../context/AuthContext';
 import logo from '../assets/logo.jpeg';
 import ErreurLimite from '../components/ErreurLimite';
 import BoutonInstaller from '../components/BoutonInstaller';
+import { prechargerDonnees } from '../services/api';
 
 export default function LayoutPrincipal() {
   const { utilisateur, deconnexion, estAdmin } = useAuth();
   const [menuOuvert, setMenuOuvert] = useState(false);
   const location = useLocation();
+  const [versionPage, setVersionPage] = useState(0);
+
+  // Au démarrage : on charge les données principales en arrière-plan
+  useEffect(() => { prechargerDonnees(); }, []);
+
+  // Données rafraîchies en silence : on remet à jour uniquement les pages de consultation (jamais un formulaire en cours)
+  useEffect(() => {
+    const pagesLectureSeule = ['/tableau-de-bord', '/statistiques', '/comptabilite', '/rapport'];
+    const surMaj = () => { if (pagesLectureSeule.includes(window.location.pathname)) setVersionPage((v) => v + 1); };
+    window.addEventListener('kl-donnees-maj', surMaj);
+    return () => window.removeEventListener('kl-donnees-maj', surMaj);
+  }, []);
   const navigate = useNavigate();
   const seDeconnecter = () => { deconnexion(); navigate('/connexion', { replace: true }); };
   const fermerMenu = () => setMenuOuvert(false);
@@ -112,7 +125,7 @@ export default function LayoutPrincipal() {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
           <div className="max-w-7xl mx-auto">
             <Suspense fallback={<div className="flex justify-center py-24"><div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" /></div>}>
-              <ErreurLimite cle={location.pathname}><Outlet /></ErreurLimite>
+              <ErreurLimite cle={location.pathname}><React.Fragment key={versionPage}><Outlet /></React.Fragment></ErreurLimite>
             </Suspense>
           </div>
         </main>

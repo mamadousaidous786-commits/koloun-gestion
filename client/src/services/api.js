@@ -20,7 +20,7 @@ const cache = new Map();      // clé -> { data, t }
 const enCours = new Map();    // clé -> promesse (évite les doublons)
 const FRAIS_MS = 10 * 1000;           // < 10 s : aucune requête
 const PERIME_MS = 10 * 60 * 1000;     // < 10 min : affiché tout de suite + rafraîchi en arrière-plan
-const SANS_CACHE_PERIME = /^\/(statistiques|rapports|clotures|notifications)/; // chiffres : toujours revérifiés
+const SANS_CACHE_PERIME = /^\/notifications/; // toujours revérifiées
 
 const cle = (url, params) => {
   const p = Object.entries(params || {})
@@ -31,10 +31,18 @@ const cle = (url, params) => {
 
 export const viderCache = () => { cache.clear(); enCours.clear(); };
 
-const getReseau = (url, config, k) => {
+const getReseau = (url, config, k, enArrierePlan = false) => {
   if (enCours.has(k)) return enCours.get(k);
   const promesse = originalGet(url, config)
-    .then((rep) => { cache.set(k, { data: rep.data, t: Date.now() }); return rep; })
+    .then((rep) => {
+      const ancien = cache.get(k);
+      cache.set(k, { data: rep.data, t: Date.now() });
+      // Rafraîchissement silencieux : si les chiffres ont changé, les pages en lecture seule se remettent à jour
+      if (enArrierePlan && ancien && JSON.stringify(ancien.data) !== JSON.stringify(rep.data)) {
+        window.dispatchEvent(new CustomEvent('kl-donnees-maj', { detail: { url } }));
+      }
+      return rep;
+    })
     .finally(() => enCours.delete(k));
   enCours.set(k, promesse);
   return promesse;
@@ -51,7 +59,7 @@ api.get = (url, config = {}) => {
     const age = Date.now() - trouve.t;
     if (age < FRAIS_MS) return Promise.resolve({ data: trouve.data, status: 200, fromCache: true });
     if (age < PERIME_MS && !SANS_CACHE_PERIME.test(url)) {
-      getReseau(url, config, k).catch(() => {}); // rafraîchit en silence
+      getReseau(url, config, k, true).catch(() => {}); // rafraîchit en silence
       return Promise.resolve({ data: trouve.data, status: 200, fromCache: true });
     }
   }
@@ -79,7 +87,10 @@ api.interceptors.response.use(
 
 // Précharge les listes principales (appelé juste après la connexion)
 export const prechargerDonnees = () => {
-  ['/produits', '/clients', '/ventes'].forEach((u) => api.get(u).catch(() => {}));
+  const utilisateur = (() => { try { return JSON.parse(localStorage.getItem('koloun_utilisateur')); } catch { return null; } })();
+  const admin = utilisateur?.role === 'admin';
+  const liste = ['/produits', '/clients', '/ventes', admin ? '/statistiques/dashboard-admin' : '/statistiques/dashboard-utilisateur'];
+  liste.forEach((u) => api.get(u, u === '/ventes' && admin ? { params: { jour: new Date().toISOString().slice(0, 10) } } : undefined).catch(() => {}));
 };
 
 export default api;

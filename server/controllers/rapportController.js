@@ -11,15 +11,36 @@ exports.mensuel = async (req, res) => {
   try {
     const boutique_id = req.utilisateur.boutique_id;
     const { mois, debut, fin } = bornesDuMois(req.query.mois);
-    const boutique = await Boutique.findByPk(boutique_id);
+    // ---- Toutes les requêtes partent en même temps (1 aller-retour réseau au lieu de 9) ----
+    const filtreDate = (colonne) => sequelize.where(sequelize.fn('DATE', sequelize.col(colonne)), { [Op.between]: [debut, fin] });
+    const [boutique, ventes, details, depenses, commandes, paiementsCmd, commandesSpecialesCreees, paiementsDettes, dettesBrutes] = await Promise.all([
+      Boutique.findByPk(boutique_id),
+      Vente.findAll({
+        where: { boutique_id, [Op.and]: [filtreDate('Vente.date_vente')] },
+        include: [{ model: MoyenPaiement }],
+      }),
+      DetailVente.findAll({
+        include: [
+          { model: ProduitTaille, include: [{ model: ProduitVariante, include: [{ model: Produit, attributes: ['id', 'nom'] }] }] },
+          { model: Vente, attributes: [], where: { boutique_id, [Op.and]: [filtreDate('Vente.date_vente')] } },
+        ],
+      }),
+      Depense.findAll({ where: { boutique_id, date_depense: { [Op.between]: [debut, fin] } } }),
+      Commande.findAll({ where: { boutique_id, date_commande: { [Op.between]: [debut, fin] } } }),
+      PaiementCommandeSpeciale.findAll({
+        where: { [Op.and]: [filtreDate('PaiementCommandeSpeciale.date_paiement')] },
+        include: [{ model: CommandeSpeciale, attributes: [], where: { boutique_id } }],
+      }),
+      CommandeSpeciale.count({ where: { boutique_id, [Op.and]: [filtreDate('CommandeSpeciale.created_at')] } }),
+      PaiementDette.findAll({
+        where: { [Op.and]: [filtreDate('PaiementDette.date_paiement')] },
+        include: [{ model: Dette, attributes: [], where: { boutique_id } }],
+      }),
+      Dette.findAll({ where: { boutique_id }, include: [{ model: PaiementDette, as: 'paiements' }] }),
+    ]);
 
     // ---- Ventes ----
-    const filtreDate = (colonne) => sequelize.where(sequelize.fn('DATE', sequelize.col(colonne)), { [Op.between]: [debut, fin] });
 
-    const ventes = await Vente.findAll({
-      where: { boutique_id, [Op.and]: [filtreDate('Vente.date_vente')] },
-      include: [{ model: MoyenPaiement }],
-    });
     const parMoyen = {};
     const parJour = {};
     let totalVentes = 0;
@@ -33,12 +54,6 @@ exports.mensuel = async (req, res) => {
     });
 
     // ---- Produits les plus vendus ----
-    const details = await DetailVente.findAll({
-      include: [
-        { model: ProduitTaille, include: [{ model: ProduitVariante, include: [{ model: Produit, attributes: ['id', 'nom'] }] }] },
-        { model: Vente, attributes: [], where: { boutique_id, [Op.and]: [filtreDate('Vente.date_vente')] } },
-      ],
-    });
     const parProduit = {};
     details.forEach((d) => {
       const nom = d.ProduitTaille?.ProduitVariante?.Produit?.nom || 'Produit supprimé';
@@ -49,7 +64,6 @@ exports.mensuel = async (req, res) => {
     const topProduits = Object.values(parProduit).sort((a, b) => b.quantite - a.quantite).slice(0, 8);
 
     // ---- Dépenses ----
-    const depenses = await Depense.findAll({ where: { boutique_id, date_depense: { [Op.between]: [debut, fin] } } });
     const depensesParCategorie = {};
     let totalDepenses = 0;
     depenses.forEach((d) => {
@@ -59,26 +73,14 @@ exports.mensuel = async (req, res) => {
     });
 
     // ---- Achats fournisseurs (commandes) ----
-    const commandes = await Commande.findAll({ where: { boutique_id, date_commande: { [Op.between]: [debut, fin] } } });
     const achatsFournisseurs = commandes.reduce((a, c) => a + Number(c.montant_total) + Number(c.transport || 0), 0);
 
     // ---- Commandes spéciales : paiements reçus ce mois ----
-    const paiementsCmd = await PaiementCommandeSpeciale.findAll({
-      where: { [Op.and]: [filtreDate('PaiementCommandeSpeciale.date_paiement')] },
-      include: [{ model: CommandeSpeciale, attributes: [], where: { boutique_id } }],
-    });
     const encaisseCommandesSpeciales = paiementsCmd.reduce((a, p) => a + Number(p.montant), 0);
-    const commandesSpecialesCreees = await CommandeSpeciale.count({
-      where: { boutique_id, [Op.and]: [filtreDate('CommandeSpeciale.created_at')] },
-    });
 
     // ---- Dettes : remboursements reçus ce mois + reste global ----
-    const paiementsDettes = await PaiementDette.findAll({
-      where: { [Op.and]: [filtreDate('PaiementDette.date_paiement')] },
-      include: [{ model: Dette, attributes: [], where: { boutique_id } }],
-    });
     const encaisseDettes = paiementsDettes.reduce((a, p) => a + Number(p.montant), 0);
-    const toutesDettes = (await Dette.findAll({ where: { boutique_id }, include: [{ model: PaiementDette, as: 'paiements' }] })).map(avecSoldeDette);
+    const toutesDettes = dettesBrutes.map(avecSoldeDette);
     const resteDettes = toutesDettes.filter((d) => !d.soldee).reduce((a, d) => a + d.reste, 0);
 
     const totalEncaisse = totalVentes + encaisseCommandesSpeciales + encaisseDettes;

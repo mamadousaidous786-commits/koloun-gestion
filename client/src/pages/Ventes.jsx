@@ -82,8 +82,12 @@ export default function Ventes() {
 
   const total = panier.reduce((acc, a) => acc + a.prix_applique * a.quantite, 0);
 
+  const [enregistrement, setEnregistrement] = useState(false);
+
   const validerVente = async () => {
     if (panier.length === 0) return toast.warn('Le panier est vide.');
+    if (enregistrement) return; // évite une double vente si on reclique pendant l'attente
+    setEnregistrement(true);
     try {
       const articles = panier.map((a) => ({
         produit_taille_id: a.produit_taille_id,
@@ -98,6 +102,8 @@ export default function Ventes() {
       charger();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Erreur lors de la vente.');
+    } finally {
+      setEnregistrement(false);
     }
   };
 
@@ -252,7 +258,7 @@ export default function Ventes() {
             <span>Total</span>
             <span className="text-blue-700">{formaterGNF(total)}</span>
           </div>
-          <button onClick={validerVente} className="btn-primary w-full py-3">Valider la vente</button>
+          <button onClick={validerVente} disabled={enregistrement} className="btn-primary w-full py-3 disabled:opacity-60">{enregistrement ? 'Enregistrement…' : 'Valider la vente'}</button>
         </div>
       </div>
 

@@ -9,49 +9,37 @@ exports.dashboardAdmin = async (req, res) => {
     const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
     const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
 
-    const chiffreAffairesJour = await Vente.sum('montant_total', {
-      where: { boutique_id, date_vente: { [Op.gte]: debutJour } },
-    }) || 0;
-
-    const chiffreAffairesMois = await Vente.sum('montant_total', {
-      where: { boutique_id, date_vente: { [Op.gte]: debutMois } },
-    }) || 0;
-
-    const nombreVentesJour = await Vente.count({
-      where: { boutique_id, date_vente: { [Op.gte]: debutJour } },
-    });
-
-    const produitsEnRupture = await ProduitTaille.count({
-      where: { quantite: 0 },
-      include: [{ model: ProduitVariante, attributes: [], include: [{ model: Produit, attributes: [], where: { boutique_id } }] }],
-    });
-    const produitsStockFaible = await ProduitTaille.count({
-      where: { quantite: { [Op.gt]: 0, [Op.lte]: sequelize.col('ProduitTaille.seuil_alerte') } },
+    const compteStock = (condition) => ProduitTaille.count({
+      where: condition,
       include: [{ model: ProduitVariante, attributes: [], include: [{ model: Produit, attributes: [], where: { boutique_id } }] }],
     });
 
-    const ventesParPaiement = await Vente.findAll({
-      where: { boutique_id, date_vente: { [Op.gte]: debutMois } },
-      attributes: [
-        'moyen_paiement_id',
-        [fn('SUM', col('montant_total')), 'total'],
-      ],
-      include: [{ model: MoyenPaiement, attributes: ['nom'] }],
-      group: ['moyen_paiement_id', 'MoyenPaiement.id'],
-    });
-
-    const notificationsNonLues = await Notification.count({ where: { boutique_id, lue: false } });
-
-    // ---- Dettes clients, commandes spéciales, dépenses ----
-    const dettes = (await Dette.findAll({ where: { boutique_id }, include: [{ model: PaiementDette, as: 'paiements' }] })).map(avecSoldeDette);
-    const dettesEnCours = dettes.filter((d) => !d.soldee);
-    const commandesSpecialesEnCours = await CommandeSpeciale.count({
-      where: { boutique_id, statut: { [Op.in]: ['en_attente', 'commandee', 'arrivee'] } },
-    });
-    const commandesSpecialesArrivees = await CommandeSpeciale.count({ where: { boutique_id, statut: 'arrivee' } });
-    const depensesMois = await Depense.sum('montant', {
-      where: { boutique_id, date_depense: { [Op.gte]: debutMois.toISOString().slice(0, 10) } },
-    }) || 0;
+    // Toutes les requêtes partent en même temps : l'affichage prend le temps d'UNE seule requête
+    const [
+      chiffreAffairesJourBrut, chiffreAffairesMoisBrut, nombreVentesJour, produitsEnRupture, produitsStockFaible,
+      ventesParPaiement, notificationsNonLues, dettesBrutes, commandesSpecialesEnCours, commandesSpecialesArrivees, depensesMoisBrut,
+    ] = await Promise.all([
+      Vente.sum('montant_total', { where: { boutique_id, date_vente: { [Op.gte]: debutJour } } }),
+      Vente.sum('montant_total', { where: { boutique_id, date_vente: { [Op.gte]: debutMois } } }),
+      Vente.count({ where: { boutique_id, date_vente: { [Op.gte]: debutJour } } }),
+      compteStock({ quantite: 0 }),
+      compteStock({ quantite: { [Op.gt]: 0, [Op.lte]: sequelize.col('ProduitTaille.seuil_alerte') } }),
+      Vente.findAll({
+        where: { boutique_id, date_vente: { [Op.gte]: debutMois } },
+        attributes: ['moyen_paiement_id', [fn('SUM', col('montant_total')), 'total']],
+        include: [{ model: MoyenPaiement, attributes: ['nom'] }],
+        group: ['moyen_paiement_id', 'MoyenPaiement.id'],
+      }),
+      Notification.count({ where: { boutique_id, lue: false } }),
+      Dette.findAll({ where: { boutique_id }, include: [{ model: PaiementDette, as: 'paiements' }] }),
+      CommandeSpeciale.count({ where: { boutique_id, statut: { [Op.in]: ['en_attente', 'commandee', 'arrivee'] } } }),
+      CommandeSpeciale.count({ where: { boutique_id, statut: 'arrivee' } }),
+      Depense.sum('montant', { where: { boutique_id, date_depense: { [Op.gte]: debutMois.toISOString().slice(0, 10) } } }),
+    ]);
+    const chiffreAffairesJour = chiffreAffairesJourBrut || 0;
+    const chiffreAffairesMois = chiffreAffairesMoisBrut || 0;
+    const depensesMois = depensesMoisBrut || 0;
+    const dettesEnCours = dettesBrutes.map(avecSoldeDette).filter((d) => !d.soldee);
 
     res.json({
       dettes_total_restant: dettesEnCours.reduce((a, d) => a + d.reste, 0),
@@ -80,28 +68,19 @@ exports.dashboardUtilisateur = async (req, res) => {
     const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
     const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
 
-    const ventesJour = await Vente.sum('montant_total', {
-      where: { boutique_id, utilisateur_id, date_vente: { [Op.gte]: debutJour } },
-    }) || 0;
-
-    const ventesMois = await Vente.sum('montant_total', {
-      where: { boutique_id, utilisateur_id, date_vente: { [Op.gte]: debutMois } },
-    }) || 0;
-
-    const dernieresVentes = await Vente.findAll({
-      where: { boutique_id, utilisateur_id },
-      order: [['date_vente', 'DESC']],
-      limit: 5,
-    });
-
-    const produitsDisponibles = await ProduitTaille.count({
-      where: { quantite: { [Op.gt]: 0 } },
+    const compteStock = (condition) => ProduitTaille.count({
+      where: condition,
       include: [{ model: ProduitVariante, attributes: [], include: [{ model: Produit, attributes: [], where: { boutique_id } }] }],
     });
-    const produitsEnRupture = await ProduitTaille.count({
-      where: { quantite: 0 },
-      include: [{ model: ProduitVariante, attributes: [], include: [{ model: Produit, attributes: [], where: { boutique_id } }] }],
-    });
+    const [ventesJourBrut, ventesMoisBrut, dernieresVentes, produitsDisponibles, produitsEnRupture] = await Promise.all([
+      Vente.sum('montant_total', { where: { boutique_id, utilisateur_id, date_vente: { [Op.gte]: debutJour } } }),
+      Vente.sum('montant_total', { where: { boutique_id, utilisateur_id, date_vente: { [Op.gte]: debutMois } } }),
+      Vente.findAll({ where: { boutique_id, utilisateur_id }, order: [['date_vente', 'DESC']], limit: 5 }),
+      compteStock({ quantite: { [Op.gt]: 0 } }),
+      compteStock({ quantite: 0 }),
+    ]);
+    const ventesJour = ventesJourBrut || 0;
+    const ventesMois = ventesMoisBrut || 0;
 
     res.json({
       ventes_jour: ventesJour,

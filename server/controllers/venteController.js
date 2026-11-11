@@ -14,100 +14,92 @@ async function genererNumeroRecu() {
 }
 
 // POST /api/ventes  -- Enregistrer une vente (plusieurs tailles/produits, prix modifiable = réduction possible)
+// Optimisé : lectures en parallèle AVANT la transaction, puis très peu d'écritures groupées
+// (chaque aller-retour vers la base coûte du temps, donc on en fait le moins possible).
 exports.creerVente = async (req, res) => {
-  const transaction = await sequelize.transaction();
+  const { articles, moyen_paiement_id, observation } = req.body;
+  const boutique_id = req.utilisateur.boutique_id;
+  let client_id = req.body.client_id || null;
+
+  if (!Array.isArray(articles) || articles.length === 0) {
+    return res.status(400).json({ message: 'Aucun article dans la vente.' });
+  }
+
+  let transaction;
   try {
-    const { articles, moyen_paiement_id, observation } = req.body;
-    let client_id = req.body.client_id || null;
-    // articles = [{ produit_taille_id, quantite, prix_applique }]
+    // ---- 1) Lectures en parallèle (hors transaction) ----
+    const ids = [...new Set(articles.map((a) => Number(a.produit_taille_id)))];
+    const [tailles, client, numeroRecu] = await Promise.all([
+      ProduitTaille.findAll({
+        where: { id: ids },
+        include: [{ model: ProduitVariante, attributes: ['id'], include: [{ model: Produit, attributes: ['id', 'nom'], where: { boutique_id } }] }],
+      }),
+      client_id ? Client.findOne({ where: { id: client_id, boutique_id }, attributes: ['id'] }) : null,
+      genererNumeroRecu(),
+    ]);
+    if (client_id && !client) client_id = null;
+    const parId = new Map(tailles.map((t) => [t.id, t]));
 
-    if (!articles || articles.length === 0) {
-      await transaction.rollback();
-      return res.status(400).json({ message: 'Aucun article dans la vente.' });
-    }
-
+    // Quantité totale demandée par taille (au cas où la même taille serait ajoutée deux fois)
+    const demande = new Map();
     let montantTotal = 0;
-    const detailsAVerifier = [];
-
     for (const article of articles) {
-      const taille = await ProduitTaille.findOne({
-        where: { id: article.produit_taille_id },
-        include: [{ model: ProduitVariante, include: [{ model: Produit, where: { boutique_id: req.utilisateur.boutique_id } }] }],
-        transaction,
-      });
-      if (!taille) throw new Error(`Article introuvable.`);
-      if (taille.quantite < article.quantite) {
+      const taille = parId.get(Number(article.produit_taille_id));
+      if (!taille) throw new Error('Article introuvable.');
+      demande.set(taille.id, (demande.get(taille.id) || 0) + Number(article.quantite));
+      montantTotal += Number(article.prix_applique) * Number(article.quantite);
+    }
+    for (const [id, qte] of demande) {
+      const taille = parId.get(id);
+      if (taille.quantite < qte) {
         throw new Error(`Stock insuffisant pour "${taille.ProduitVariante.Produit.nom}" (taille ${taille.taille}, disponible: ${taille.quantite}).`);
       }
-
-      const sousTotal = article.prix_applique * article.quantite;
-      montantTotal += sousTotal;
-      detailsAVerifier.push({ taille, sousTotal });
     }
 
-    // Client facultatif : on vérifie qu'il appartient bien à cette boutique
-    if (client_id) {
-      const client = await Client.findOne({ where: { id: client_id, boutique_id: req.utilisateur.boutique_id }, transaction });
-      if (!client) client_id = null;
-    }
-
-    const numeroRecu = await genererNumeroRecu();
+    // ---- 2) Écritures groupées dans une transaction ----
+    transaction = await sequelize.transaction();
 
     const vente = await Vente.create({
-      boutique_id: req.utilisateur.boutique_id,
-      utilisateur_id: req.utilisateur.id,
-      moyen_paiement_id,
-      client_id,
-      numero_recu: numeroRecu,
-      montant_total: montantTotal,
-      observation,
+      boutique_id, utilisateur_id: req.utilisateur.id, moyen_paiement_id, client_id,
+      numero_recu: numeroRecu, montant_total: montantTotal, observation,
     }, { transaction });
 
-    for (let i = 0; i < articles.length; i++) {
-      const article = articles[i];
-      const { taille, sousTotal } = detailsAVerifier[i];
+    await DetailVente.bulkCreate(articles.map((a) => ({
+      vente_id: vente.id,
+      produit_taille_id: a.produit_taille_id,
+      quantite: a.quantite,
+      prix_applique: a.prix_applique,
+      sous_total: Number(a.prix_applique) * Number(a.quantite),
+    })), { transaction });
 
-      await DetailVente.create({
-        vente_id: vente.id,
-        produit_taille_id: article.produit_taille_id,
-        quantite: article.quantite,
-        prix_applique: article.prix_applique,
-        sous_total: sousTotal,
-      }, { transaction });
+    // Décrément du stock en UNE requête, protégé contre deux ventes simultanées
+    const cas = [...demande].map(([id, qte]) => `WHEN ${Number(id)} THEN ${Number(qte)}`).join(' ');
+    const [, lignesModifiees] = await sequelize.query(
+      `UPDATE produit_tailles SET quantite = quantite - CASE id ${cas} END
+       WHERE id IN (${[...demande.keys()].map(Number).join(',')}) AND quantite >= CASE id ${cas} END`,
+      { transaction }
+    );
+    const modifiees = typeof lignesModifiees === 'number' ? lignesModifiees : lignesModifiees?.affectedRows;
+    if (modifiees !== demande.size) throw new Error('Stock insuffisant : un autre vendeur vient de vendre ce produit.');
 
-      taille.quantite -= article.quantite;
-      await taille.save({ transaction });
-
-      if (taille.quantite === 0) {
-        await Notification.create({
-          boutique_id: req.utilisateur.boutique_id,
-          type: 'rupture_stock',
-          message: `Le produit "${taille.ProduitVariante.Produit.nom}" (taille ${taille.taille}) est en rupture de stock.`,
-        }, { transaction });
-      } else if (taille.quantite <= taille.seuil_alerte) {
-        await Notification.create({
-          boutique_id: req.utilisateur.boutique_id,
-          type: 'stock_faible',
-          message: `Le stock du produit "${taille.ProduitVariante.Produit.nom}" (taille ${taille.taille}) est faible (${taille.quantite} restant(s)).`,
-        }, { transaction });
-      }
+    // Alertes de stock (une seule insertion)
+    const notifications = [];
+    for (const [id, qte] of demande) {
+      const taille = parId.get(id);
+      const reste = taille.quantite - qte;
+      const nom = taille.ProduitVariante.Produit.nom;
+      if (reste === 0) notifications.push({ boutique_id, type: 'rupture_stock', message: `Le produit "${nom}" (taille ${taille.taille}) est en rupture de stock.` });
+      else if (reste <= taille.seuil_alerte) notifications.push({ boutique_id, type: 'stock_faible', message: `Le stock du produit "${nom}" (taille ${taille.taille}) est faible (${reste} restant(s)).` });
     }
+    if (notifications.length) await Notification.bulkCreate(notifications, { transaction });
 
     await Recu.create({ vente_id: vente.id }, { transaction });
-
     await transaction.commit();
 
-    const venteComplete = await Vente.findByPk(vente.id, {
-      include: [
-        { model: DetailVente, include: [{ model: ProduitTaille, include: [{ model: ProduitVariante, include: [Produit] }] }] },
-        { model: MoyenPaiement },
-        { model: Utilisateur, attributes: ['id', 'nom', 'prenom'] },
-      ],
-    });
-
-    res.status(201).json(venteComplete);
+    // Réponse immédiate (le détail complet est dans le reçu)
+    res.status(201).json(vente);
   } catch (error) {
-    await transaction.rollback();
+    if (transaction) await transaction.rollback().catch(() => {});
     res.status(400).json({ message: error.message });
   }
 };
