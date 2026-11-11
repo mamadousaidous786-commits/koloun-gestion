@@ -18,6 +18,7 @@ const Commande = sequelize.define('Commande', {
   montant_realise: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
   statut: { type: DataTypes.ENUM('en_cours', 'amortie', 'annulee'), defaultValue: 'en_cours' },
   date_commande: { type: DataTypes.DATEONLY, allowNull: false },
+  groupe_id: DataTypes.INTEGER,
 }, { tableName: 'commandes', updatedAt: false });
 
 module.exports = Commande;

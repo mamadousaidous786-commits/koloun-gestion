@@ -222,3 +222,56 @@ exports.comptabilite = async (req, res) => {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
   }
 };
+
+// GET /api/statistiques/graphiques -- toutes les données des graphiques en une seule réponse
+exports.graphiques = async (req, res) => {
+  try {
+    const b = req.utilisateur.boutique_id;
+    const q = (sql) => sequelize.query(sql, { replacements: { b }, type: sequelize.QueryTypes.SELECT });
+
+    const [ventes30, mois, depensesMois, achatsMois, paiements, produits, jours, heures, vendeurs, clients] = await Promise.all([
+      q(`SELECT DATE_FORMAT(date_vente,'%Y-%m-%d') AS jour, SUM(montant_total) AS total, COUNT(*) AS nb
+         FROM ventes WHERE boutique_id=:b AND date_vente >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+         GROUP BY jour ORDER BY jour`),
+      q(`SELECT DATE_FORMAT(date_vente,'%Y-%m') AS mois, SUM(montant_total) AS total
+         FROM ventes WHERE boutique_id=:b AND date_vente >= DATE_SUB(DATE_FORMAT(CURDATE(),'%Y-%m-01'), INTERVAL 5 MONTH)
+         GROUP BY mois ORDER BY mois`),
+      q(`SELECT DATE_FORMAT(date_depense,'%Y-%m') AS mois, SUM(montant) AS total
+         FROM depenses WHERE boutique_id=:b AND date_depense >= DATE_SUB(DATE_FORMAT(CURDATE(),'%Y-%m-01'), INTERVAL 5 MONTH)
+         GROUP BY mois`),
+      q(`SELECT DATE_FORMAT(date_commande,'%Y-%m') AS mois, SUM(montant_total + COALESCE(transport,0)) AS total
+         FROM commandes WHERE boutique_id=:b AND date_commande >= DATE_SUB(DATE_FORMAT(CURDATE(),'%Y-%m-01'), INTERVAL 5 MONTH)
+         GROUP BY mois`),
+      q(`SELECT m.nom AS nom, SUM(v.montant_total) AS total, COUNT(*) AS nb
+         FROM ventes v JOIN moyens_paiement m ON m.id = v.moyen_paiement_id
+         WHERE v.boutique_id=:b AND v.date_vente >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+         GROUP BY m.nom ORDER BY total DESC`),
+      q(`SELECT p.nom AS nom, SUM(d.quantite) AS quantite, SUM(d.sous_total) AS chiffre_affaires
+         FROM details_ventes d
+         JOIN ventes v ON v.id = d.vente_id
+         JOIN produit_tailles pt ON pt.id = d.produit_taille_id
+         JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
+         JOIN produits p ON p.id = pv.produit_id
+         WHERE v.boutique_id=:b AND v.date_vente >= DATE_SUB(CURDATE(), INTERVAL 89 DAY)
+         GROUP BY p.id, p.nom ORDER BY quantite DESC LIMIT 8`),
+      q(`SELECT DAYOFWEEK(date_vente) AS jour, SUM(montant_total) AS total, COUNT(*) AS nb
+         FROM ventes WHERE boutique_id=:b AND date_vente >= DATE_SUB(CURDATE(), INTERVAL 89 DAY)
+         GROUP BY jour ORDER BY jour`),
+      q(`SELECT HOUR(date_vente) AS heure, COUNT(*) AS nb
+         FROM ventes WHERE boutique_id=:b AND date_vente >= DATE_SUB(CURDATE(), INTERVAL 89 DAY)
+         GROUP BY heure ORDER BY heure`),
+      q(`SELECT CONCAT(COALESCE(u.prenom,''),' ',u.nom) AS nom, SUM(v.montant_total) AS total, COUNT(*) AS nb
+         FROM ventes v JOIN utilisateurs u ON u.id = v.utilisateur_id
+         WHERE v.boutique_id=:b AND v.date_vente >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+         GROUP BY u.id, u.nom, u.prenom ORDER BY total DESC LIMIT 8`),
+      q(`SELECT c.nom AS nom, SUM(v.montant_total) AS total, COUNT(*) AS nb
+         FROM ventes v JOIN clients c ON c.id = v.client_id
+         WHERE v.boutique_id=:b AND v.date_vente >= DATE_SUB(CURDATE(), INTERVAL 89 DAY)
+         GROUP BY c.id, c.nom ORDER BY total DESC LIMIT 5`),
+    ]);
+
+    res.json({ ventes30, mois, depensesMois, achatsMois, paiements, produits, jours, heures, vendeurs, clients });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
+  }
+};

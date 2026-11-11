@@ -10,6 +10,8 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT || 3306,
     dialect: 'mysql',
     logging: false,
+    pool: { max: 10, min: 2, idle: 600000, acquire: 30000, evict: 60000 }, // connexions gardées chaudes
+    dialectOptions: { connectTimeout: 20000, enableKeepAlive: true, keepAliveInitialDelay: 10000 },
     define: {
       underscored: true,
       timestamps: true,

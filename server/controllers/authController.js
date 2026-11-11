@@ -36,15 +36,14 @@ exports.login = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
     );
 
-    utilisateur.derniere_connexion = new Date();
-    await utilisateur.save();
-
-    await Historique.create({
+    // Écritures non bloquantes : la réponse part tout de suite
+    Utilisateur.update({ derniere_connexion: new Date() }, { where: { id: utilisateur.id } }).catch(() => {});
+    Historique.create({
       utilisateur_id: utilisateur.id,
       boutique_id: utilisateur.boutique_id,
       action: 'Connexion',
       details: `Connexion réussie de ${utilisateur.email}`,
-    });
+    }).catch(() => {});
 
     res.json({
       token,

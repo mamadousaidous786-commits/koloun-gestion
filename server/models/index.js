@@ -23,6 +23,7 @@ const Dette = require('./Dette');
 const PaiementDette = require('./PaiementDette');
 const Depense = require('./Depense');
 const ClotureCaisse = require('./ClotureCaisse');
+const GroupeCommande = require('./GroupeCommande');
 
 // ---- Boutique ----
 Boutique.hasMany(Utilisateur, { foreignKey: 'boutique_id' });
@@ -120,6 +121,12 @@ Depense.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id' });
 Utilisateur.hasMany(ClotureCaisse, { foreignKey: 'utilisateur_id' });
 ClotureCaisse.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id' });
 
+// ---- Groupes de commande (transport partagé) ----
+Boutique.hasMany(GroupeCommande, { foreignKey: 'boutique_id' });
+GroupeCommande.belongsTo(Boutique, { foreignKey: 'boutique_id' });
+GroupeCommande.hasMany(Commande, { foreignKey: 'groupe_id' });
+Commande.belongsTo(GroupeCommande, { foreignKey: 'groupe_id' });
+
 module.exports = {
   sequelize,
   Boutique,
@@ -145,4 +152,5 @@ module.exports = {
   PaiementDette,
   Depense,
   ClotureCaisse,
+  GroupeCommande,
 };

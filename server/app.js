@@ -69,38 +69,10 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Met la base à niveau automatiquement (groupes de commande) : plus besoin d'exécuter le SQL à la main.
-// Sans effet si tout existe déjà.
-async function migrerBase() {
-  try {
-    await sequelize.query(`CREATE TABLE IF NOT EXISTS groupes_commande (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      boutique_id INT NOT NULL,
-      nom VARCHAR(150) NOT NULL,
-      date_commande DATE NOT NULL,
-      transport DECIMAL(12,2) DEFAULT 0,
-      transport_valide TINYINT(1) NOT NULL DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE
-    )`);
-    const [colonne] = await sequelize.query(
-      "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes' AND COLUMN_NAME = 'groupe_id'",
-      { type: sequelize.QueryTypes.SELECT }
-    );
-    if (Number(colonne.n) === 0) {
-      await sequelize.query('ALTER TABLE commandes ADD COLUMN groupe_id INT NULL');
-      await sequelize.query('ALTER TABLE commandes ADD CONSTRAINT fk_commandes_groupe FOREIGN KEY (groupe_id) REFERENCES groupes_commande(id) ON DELETE SET NULL');
-    }
-  } catch (e) {
-    console.error('⚠️ Mise à niveau de la base (groupes) :', e.message);
-  }
-}
-
 async function demarrerServeur() {
   try {
     await sequelize.authenticate();
     console.log('✅ Connexion à la base de données MySQL réussie.');
-    await migrerBase();
 
     // En développement : synchronise les modèles (ne remplace pas schema.sql en prod)
     // await sequelize.sync({ alter: true });

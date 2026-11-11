@@ -1,4 +1,5 @@
-const { CommandeSpeciale, PaiementCommandeSpeciale, MoyenPaiement, Notification } = require('../models');
+const { CommandeSpeciale, PaiementCommandeSpeciale, MoyenPaiement, Notification, Boutique } = require('../models');
+const { envoyerRecuCommandeSpeciale } = require('../services/recuService');
 const { Op } = require('sequelize');
 const { avecSoldeCommande } = require('../utils/soldes');
 const { trouverOuCreerClient } = require('../utils/clients');
@@ -171,6 +172,18 @@ exports.supprimer = async (req, res) => {
     if (!commande) return res.status(404).json({ message: 'Commande introuvable.' });
     await commande.destroy();
     res.json({ message: 'Commande supprimée.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
+  }
+};
+
+// GET /api/commandes-speciales/:id/recu -- reçu PDF (acompte versé + reste à payer)
+exports.recu = async (req, res) => {
+  try {
+    const commande = await charger(req.params.id, req.utilisateur.boutique_id);
+    if (!commande) return res.status(404).json({ message: 'Commande introuvable.' });
+    const boutique = await Boutique.findByPk(req.utilisateur.boutique_id);
+    envoyerRecuCommandeSpeciale(commande, boutique, res);
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
   }

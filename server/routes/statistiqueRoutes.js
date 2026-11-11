@@ -8,6 +8,7 @@ router.get('/dashboard-admin', autoriserRoles('admin'), ctrl.dashboardAdmin);
 router.get('/dashboard-utilisateur', ctrl.dashboardUtilisateur);
 router.get('/produits-plus-vendus', autoriserRoles('admin'), ctrl.produitsPlusVendus);
 router.get('/recherche', autoriserRoles('admin'), ctrl.rechercheIntelligente);
+router.get('/graphiques', autoriserRoles('admin'), ctrl.graphiques);
 router.get('/comptabilite', autoriserRoles('admin'), ctrl.comptabilite);
 
 module.exports = router;

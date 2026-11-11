@@ -115,26 +115,37 @@ exports.creerVente = async (req, res) => {
 // GET /api/ventes
 exports.listerVentes = async (req, res) => {
   try {
-    const { debut, fin } = req.query;
+    const { debut, fin, jour } = req.query;
     const filtre = { boutique_id: req.utilisateur.boutique_id };
+    const admin = req.utilisateur.role === 'admin';
 
-    if (debut && fin) {
+    // Un jour précis (AAAA-MM-JJ). Le vendeur ne voit QUE les ventes d'aujourd'hui.
+    const aujourdhui = new Date().toISOString().slice(0, 10);
+    const jourDemande = admin ? jour : aujourdhui;
+
+    if (jourDemande) {
+      const debutJour = new Date(`${jourDemande}T00:00:00.000Z`);
+      const finJour = new Date(`${jourDemande}T23:59:59.999Z`);
+      filtre.date_vente = { [Op.between]: [debutJour, finJour] };
+    } else if (debut && fin) {
       filtre.date_vente = { [Op.between]: [new Date(debut), new Date(fin)] };
+    } else {
+      // Administrateur sans filtre : les 30 derniers jours (liste légère et rapide)
+      filtre.date_vente = { [Op.gte]: new Date(Date.now() - 30 * 24 * 3600 * 1000) };
     }
 
-    if (req.utilisateur.role !== 'admin') {
-      filtre.utilisateur_id = req.utilisateur.id;
-    }
+    if (!admin) filtre.utilisateur_id = req.utilisateur.id;
 
+    // Liste légère : pas besoin du détail des articles (il est dans le reçu)
     const ventes = await Vente.findAll({
       where: filtre,
       include: [
-        { model: DetailVente, include: [{ model: ProduitTaille, include: [{ model: ProduitVariante, include: [Produit] }] }] },
         { model: MoyenPaiement },
         { model: Utilisateur, attributes: ['id', 'nom', 'prenom'] },
         { model: Client, attributes: ['id', 'nom', 'telephone'] },
       ],
       order: [['date_vente', 'DESC']],
+      limit: 500,
     });
 
     res.json(ventes);
