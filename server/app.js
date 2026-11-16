@@ -84,6 +84,33 @@ const PORT = process.env.PORT || 5000;
 
 // Met la base à niveau automatiquement (groupes de commande) : plus besoin d'exécuter le SQL à la main.
 // Sans effet si tout existe déjà.
+async function migrerSuivi() {
+  const etape = async (nom, fn) => {
+    try { await fn(); } catch (e) { console.error(`⚠️ Suivi commandes (${nom}) :`, e.message); }
+  };
+  const q = (sql) => sequelize.query(sql);
+  await etape('table historique', () => q(`CREATE TABLE IF NOT EXISTS suivi_commandes_speciales (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    commande_speciale_id INT NOT NULL,
+    statut VARCHAR(30) NOT NULL,
+    note VARCHAR(255) NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_suivi_commande (commande_speciale_id)
+  )`));
+  await etape('colonne code_suivi', async () => {
+    const [col] = await sequelize.query(
+      "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes_speciales' AND COLUMN_NAME = 'code_suivi'",
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    if (Number(col.n) === 0) await q('ALTER TABLE commandes_speciales ADD COLUMN code_suivi VARCHAR(20) NULL');
+  });
+  await etape('statuts', () => q("ALTER TABLE commandes_speciales MODIFY COLUMN statut ENUM('en_attente','commandee','entrepot','en_transit','arrivee','livree','annulee') DEFAULT 'en_attente'"));
+  await etape('codes', () => q("UPDATE commandes_speciales SET code_suivi = LOWER(SUBSTRING(MD5(CONCAT(id, RAND(), NOW())), 1, 10)) WHERE code_suivi IS NULL"));
+  await etape('historique initial', () => q(`INSERT INTO suivi_commandes_speciales (commande_speciale_id, statut, created_at)
+    SELECT c.id, c.statut, c.created_at FROM commandes_speciales c
+    WHERE NOT EXISTS (SELECT 1 FROM suivi_commandes_speciales s WHERE s.commande_speciale_id = c.id)`));
+}
+
 async function migrerBase() {
   try {
     await sequelize.query(`CREATE TABLE IF NOT EXISTS groupes_commande (
@@ -108,25 +135,8 @@ async function migrerBase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE
     )`);
-    // Suivi des commandes spéciales : nouvelles étapes + lien public + historique
-    await sequelize.query("ALTER TABLE commandes_speciales MODIFY COLUMN statut ENUM('en_attente','commandee','entrepot','en_transit','arrivee','livree','annulee') DEFAULT 'en_attente'");
-    const [codeCol] = await sequelize.query(
-      "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes_speciales' AND COLUMN_NAME = 'code_suivi'",
-      { type: sequelize.QueryTypes.SELECT }
-    );
-    if (Number(codeCol.n) === 0) await sequelize.query('ALTER TABLE commandes_speciales ADD COLUMN code_suivi VARCHAR(20) NULL, ADD UNIQUE KEY uq_code_suivi (code_suivi)');
-    await sequelize.query("UPDATE commandes_speciales SET code_suivi = LOWER(SUBSTRING(MD5(CONCAT(id, RAND(), NOW())), 1, 10)) WHERE code_suivi IS NULL");
-    await sequelize.query(`CREATE TABLE IF NOT EXISTS suivi_commandes_speciales (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      commande_speciale_id INT NOT NULL,
-      statut VARCHAR(30) NOT NULL,
-      note VARCHAR(255) NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (commande_speciale_id) REFERENCES commandes_speciales(id) ON DELETE CASCADE
-    )`);
-    await sequelize.query(`INSERT INTO suivi_commandes_speciales (commande_speciale_id, statut, created_at)
-      SELECT c.id, c.statut, c.created_at FROM commandes_speciales c
-      WHERE NOT EXISTS (SELECT 1 FROM suivi_commandes_speciales s WHERE s.commande_speciale_id = c.id)`);
+    // Suivi des commandes spéciales : chaque étape est indépendante (un échec n'empêche pas les autres)
+    await migrerSuivi();
     const [colonne] = await sequelize.query(
       "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes' AND COLUMN_NAME = 'groupe_id'",
       { type: sequelize.QueryTypes.SELECT }
