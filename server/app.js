@@ -67,7 +67,7 @@ app.get('/', (req, res) => {
 app.use((err, req, res, next) => {
   if (err && (err.name === 'MulterError' || /images sont autoris/.test(err.message || ''))) {
     const message = err.code === 'LIMIT_FILE_SIZE' ? 'Une photo est trop lourde (12 Mo maximum).'
-      : err.code === 'LIMIT_UNEXPECTED_FILE' ? 'Trop de photos (6 maximum par produit).' : err.message;
+      : err.code === 'LIMIT_UNEXPECTED_FILE' ? 'Trop de photos (30 maximum par enregistrement).' : err.message;
     return res.status(400).json({ message });
   }
   console.error(err.stack);
