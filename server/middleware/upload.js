@@ -25,7 +25,7 @@ const filtreFichier = (req, file, cb) => {
 const memoire = multer({
   storage: multer.memoryStorage(),
   fileFilter: filtreFichier,
-  limits: { fileSize: 12 * 1024 * 1024 }, // 12 Mo par image (photos de téléphone)
+  limits: { fileSize: 12 * 1024 * 1024, files: 40 }, // 12 Mo par image, 40 photos max
 });
 
 let cloudinary = null;
@@ -71,6 +71,7 @@ function enchainer(middlewareMulter) {
 }
 
 module.exports = {
-  array: (champ, max) => enchainer(memoire.array(champ, max)),
-  single: (champ) => enchainer(memoire.single(champ)),
+  // any() : le nom du champ n'a plus d'importance (plus d'erreur « Unexpected field »)
+  array: () => enchainer(memoire.any()),
+  single: () => enchainer(memoire.any()),
 };

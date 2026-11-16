@@ -27,6 +27,10 @@ const clotureRoutes = require('./routes/clotureRoutes');
 const rapportRoutes = require('./routes/rapportRoutes');
 const sauvegardeRoutes = require('./routes/sauvegardeRoutes');
 
+// Le serveur ne doit jamais s'arrêter à cause d'une erreur isolée
+process.on('uncaughtException', (e) => console.error('Erreur non gérée :', e && e.message));
+process.on('unhandledRejection', (e) => console.error('Promesse rejetée :', e && e.message));
+
 const app = express();
 app.set('trust proxy', 1); // derrière le proxy de Render : adresses https correctes
 
