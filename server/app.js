@@ -14,6 +14,7 @@ const venteRoutes = require('./routes/venteRoutes');
 const recuRoutes = require('./routes/recuRoutes');
 const commandeRoutes = require('./routes/commandeRoutes');
 const groupeCommandeRoutes = require('./routes/groupeCommandeRoutes');
+const pushRoutes = require('./routes/pushRoutes');
 const statistiqueRoutes = require('./routes/statistiqueRoutes');
 const utilisateurRoutes = require('./routes/utilisateurRoutes');
 const fournisseurRoutes = require('./routes/fournisseurRoutes');
@@ -43,6 +44,7 @@ app.use('/api/ventes', venteRoutes);
 app.use('/api/recus', recuRoutes);
 app.use('/api/commandes', commandeRoutes);
 app.use('/api/groupes-commande', groupeCommandeRoutes);
+app.use('/api/push', pushRoutes);
 app.use('/api/statistiques', statistiqueRoutes);
 app.use('/api/utilisateurs', utilisateurRoutes);
 app.use('/api/clients', clientRoutes);
@@ -63,16 +65,61 @@ app.get('/', (req, res) => {
 
 // Gestion des erreurs globales
 app.use((err, req, res, next) => {
+  if (err && (err.name === 'MulterError' || /images sont autoris/.test(err.message || ''))) {
+    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Une photo est trop lourde (12 Mo maximum).'
+      : err.code === 'LIMIT_UNEXPECTED_FILE' ? 'Trop de photos (6 maximum par produit).' : err.message;
+    return res.status(400).json({ message });
+  }
   console.error(err.stack);
   res.status(500).json({ message: 'Erreur interne du serveur.', erreur: err.message });
 });
 
 const PORT = process.env.PORT || 5000;
 
+// Met la base à niveau automatiquement (groupes de commande) : plus besoin d'exécuter le SQL à la main.
+// Sans effet si tout existe déjà.
+async function migrerBase() {
+  try {
+    await sequelize.query(`CREATE TABLE IF NOT EXISTS groupes_commande (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      boutique_id INT NOT NULL,
+      nom VARCHAR(150) NOT NULL,
+      date_commande DATE NOT NULL,
+      transport DECIMAL(12,2) DEFAULT 0,
+      transport_valide TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE
+    )`);
+    await sequelize.query(`CREATE TABLE IF NOT EXISTS push_abonnements (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      boutique_id INT NOT NULL,
+      utilisateur_id INT NULL,
+      role VARCHAR(30) NULL,
+      endpoint_hash VARCHAR(64) NOT NULL UNIQUE,
+      endpoint TEXT NOT NULL,
+      p256dh VARCHAR(255) NOT NULL,
+      auth VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE
+    )`);
+    const [colonne] = await sequelize.query(
+      "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes' AND COLUMN_NAME = 'groupe_id'",
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    if (Number(colonne.n) === 0) {
+      await sequelize.query('ALTER TABLE commandes ADD COLUMN groupe_id INT NULL');
+      await sequelize.query('ALTER TABLE commandes ADD CONSTRAINT fk_commandes_groupe FOREIGN KEY (groupe_id) REFERENCES groupes_commande(id) ON DELETE SET NULL');
+    }
+  } catch (e) {
+    console.error('⚠️ Mise à niveau de la base (groupes) :', e.message);
+  }
+}
+
 async function demarrerServeur() {
   try {
     await sequelize.authenticate();
     console.log('✅ Connexion à la base de données MySQL réussie.');
+    await migrerBase();
 
     // En développement : synchronise les modèles (ne remplace pas schema.sql en prod)
     // await sequelize.sync({ alter: true });

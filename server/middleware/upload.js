@@ -13,18 +13,19 @@ const cloudinaryActif = !!(
   process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET
 );
 
+// Accepte toutes les photos de téléphone (jpeg, png, webp, heic/heif des iPhone, avif, gif…)
 const filtreFichier = (req, file, cb) => {
-  const types = /jpeg|jpg|png|webp/;
-  const extensionValide = types.test(path.extname(file.originalname).toLowerCase());
-  const mimeValide = types.test(file.mimetype);
-  if (extensionValide && mimeValide) cb(null, true);
-  else cb(new Error('Seules les images (jpeg, jpg, png, webp) sont autorisées.'));
+  const mime = (file.mimetype || '').toLowerCase();
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const extensions = ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.avif', '.gif', '.jfif'];
+  if (mime.startsWith('image/') || extensions.includes(ext)) cb(null, true);
+  else cb(new Error("Seules les images sont autorisées (jpeg, png, webp, heic...)."));
 };
 
 const memoire = multer({
   storage: multer.memoryStorage(),
   fileFilter: filtreFichier,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 Mo par image
+  limits: { fileSize: 12 * 1024 * 1024 }, // 12 Mo par image (photos de téléphone)
 });
 
 let cloudinary = null;
