@@ -28,6 +28,8 @@ exports.lister = async (req, res) => {
     if (q) where[Op.or] = [{ client_nom: { [Op.like]: `%${q}%` } }, { article: { [Op.like]: `%${q}%` } }];
 
     const commandes = await CommandeSpeciale.findAll({ where, include: INCLUS, order: [['created_at', 'DESC'], ...ORDRE_SUIVI] });
+    // Toute commande sans lien de suivi en reçoit un automatiquement
+    await Promise.all(commandes.filter((c) => !c.code_suivi).map((c) => c.update({ code_suivi: nouveauCode() })));
     res.json(commandes.map(avecSoldeCommande));
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
