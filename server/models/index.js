@@ -19,6 +19,7 @@ const Historique = require('./Historique');
 const Client = require('./Client');
 const CommandeSpeciale = require('./CommandeSpeciale');
 const PaiementCommandeSpeciale = require('./PaiementCommandeSpeciale');
+const SuiviCommandeSpeciale = require('./SuiviCommandeSpeciale');
 const Dette = require('./Dette');
 const PaiementDette = require('./PaiementDette');
 const Depense = require('./Depense');
@@ -110,6 +111,8 @@ CommandeSpeciale.belongsTo(Client, { foreignKey: 'client_id' });
 
 CommandeSpeciale.hasMany(PaiementCommandeSpeciale, { foreignKey: 'commande_speciale_id', as: 'paiements', onDelete: 'CASCADE' });
 PaiementCommandeSpeciale.belongsTo(CommandeSpeciale, { foreignKey: 'commande_speciale_id' });
+CommandeSpeciale.hasMany(SuiviCommandeSpeciale, { foreignKey: 'commande_speciale_id', as: 'suivi', onDelete: 'CASCADE' });
+SuiviCommandeSpeciale.belongsTo(CommandeSpeciale, { foreignKey: 'commande_speciale_id' });
 PaiementCommandeSpeciale.belongsTo(MoyenPaiement, { foreignKey: 'moyen_paiement_id' });
 
 Client.hasMany(Dette, { foreignKey: 'client_id' });
@@ -152,6 +155,7 @@ module.exports = {
   Client,
   CommandeSpeciale,
   PaiementCommandeSpeciale,
+  SuiviCommandeSpeciale,
   Dette,
   PaiementDette,
   Depense,

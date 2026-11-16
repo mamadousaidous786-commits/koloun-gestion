@@ -5,6 +5,7 @@ const { verifierToken, autoriserRoles } = require('../middleware/auth');
 
 router.use(verifierToken);
 router.get('/', ctrl.listerVentes);
+router.get('/recherche-produit', autoriserRoles('admin'), ctrl.rechercheProduit);
 router.get('/:id', ctrl.obtenirVente);
 router.post('/', ctrl.creerVente);
 router.delete('/:id', autoriserRoles('admin'), ctrl.supprimerVente);

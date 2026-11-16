@@ -15,6 +15,7 @@ const recuRoutes = require('./routes/recuRoutes');
 const commandeRoutes = require('./routes/commandeRoutes');
 const groupeCommandeRoutes = require('./routes/groupeCommandeRoutes');
 const pushRoutes = require('./routes/pushRoutes');
+const suiviRoutes = require('./routes/suiviRoutes');
 const statistiqueRoutes = require('./routes/statistiqueRoutes');
 const utilisateurRoutes = require('./routes/utilisateurRoutes');
 const fournisseurRoutes = require('./routes/fournisseurRoutes');
@@ -26,6 +27,10 @@ const depenseRoutes = require('./routes/depenseRoutes');
 const clotureRoutes = require('./routes/clotureRoutes');
 const rapportRoutes = require('./routes/rapportRoutes');
 const sauvegardeRoutes = require('./routes/sauvegardeRoutes');
+
+// Le serveur ne doit jamais s'arrêter à cause d'une erreur isolée
+process.on('uncaughtException', (e) => console.error('Erreur non gérée :', e && e.message));
+process.on('unhandledRejection', (e) => console.error('Promesse rejetée :', e && e.message));
 
 const app = express();
 app.set('trust proxy', 1); // derrière le proxy de Render : adresses https correctes
@@ -45,6 +50,7 @@ app.use('/api/recus', recuRoutes);
 app.use('/api/commandes', commandeRoutes);
 app.use('/api/groupes-commande', groupeCommandeRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/suivi', suiviRoutes); // public : le client suit sa commande sans compte
 app.use('/api/statistiques', statistiqueRoutes);
 app.use('/api/utilisateurs', utilisateurRoutes);
 app.use('/api/clients', clientRoutes);
@@ -65,6 +71,11 @@ app.get('/', (req, res) => {
 
 // Gestion des erreurs globales
 app.use((err, req, res, next) => {
+  if (err && (err.name === 'MulterError' || /images sont autoris/.test(err.message || ''))) {
+    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Une photo est trop lourde (12 Mo maximum).'
+      : err.code === 'LIMIT_UNEXPECTED_FILE' ? 'Trop de photos (30 maximum par enregistrement).' : err.message;
+    return res.status(400).json({ message });
+  }
   console.error(err.stack);
   res.status(500).json({ message: 'Erreur interne du serveur.', erreur: err.message });
 });
@@ -97,6 +108,25 @@ async function migrerBase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (boutique_id) REFERENCES boutiques(id) ON DELETE CASCADE
     )`);
+    // Suivi des commandes spéciales : nouvelles étapes + lien public + historique
+    await sequelize.query("ALTER TABLE commandes_speciales MODIFY COLUMN statut ENUM('en_attente','commandee','entrepot','en_transit','arrivee','livree','annulee') DEFAULT 'en_attente'");
+    const [codeCol] = await sequelize.query(
+      "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes_speciales' AND COLUMN_NAME = 'code_suivi'",
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    if (Number(codeCol.n) === 0) await sequelize.query('ALTER TABLE commandes_speciales ADD COLUMN code_suivi VARCHAR(20) NULL, ADD UNIQUE KEY uq_code_suivi (code_suivi)');
+    await sequelize.query("UPDATE commandes_speciales SET code_suivi = LOWER(SUBSTRING(MD5(CONCAT(id, RAND(), NOW())), 1, 10)) WHERE code_suivi IS NULL");
+    await sequelize.query(`CREATE TABLE IF NOT EXISTS suivi_commandes_speciales (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      commande_speciale_id INT NOT NULL,
+      statut VARCHAR(30) NOT NULL,
+      note VARCHAR(255) NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (commande_speciale_id) REFERENCES commandes_speciales(id) ON DELETE CASCADE
+    )`);
+    await sequelize.query(`INSERT INTO suivi_commandes_speciales (commande_speciale_id, statut, created_at)
+      SELECT c.id, c.statut, c.created_at FROM commandes_speciales c
+      WHERE NOT EXISTS (SELECT 1 FROM suivi_commandes_speciales s WHERE s.commande_speciale_id = c.id)`);
     const [colonne] = await sequelize.query(
       "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes' AND COLUMN_NAME = 'groupe_id'",
       { type: sequelize.QueryTypes.SELECT }

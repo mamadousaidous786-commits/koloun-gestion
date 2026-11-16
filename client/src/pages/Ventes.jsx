@@ -3,6 +3,7 @@ import { toast } from 'react-toastify';
 import { FiTrash2, FiPrinter, FiImage, FiShoppingCart, FiPlus } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
 import EnTete from '../components/EnTete';
+import RechercheVentesProduit from '../components/RechercheVentesProduit';
 import { listerProduits } from '../services/produitService';
 import { listerClients } from '../services/clientService';
 import { creerVente, listerVentes, genererRecu, supprimerVente } from '../services/venteService';
@@ -316,6 +317,8 @@ export default function Ventes() {
           </tbody>
         </table>
       </div>
+
+      {estAdmin && <RechercheVentesProduit />}
     </div>
   );
 }

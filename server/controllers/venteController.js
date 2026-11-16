@@ -203,3 +203,55 @@ exports.supprimerVente = async (req, res) => {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
   }
 };
+
+// GET /api/ventes/recherche-produit?q=chemise&du=AAAA-MM-JJ&au=AAAA-MM-JJ&vendeur_id=  (administrateur)
+// Qui a vendu tel produit ? Retourne chaque vente du produit + un résumé par vendeur.
+exports.rechercheProduit = async (req, res) => {
+  try {
+    const boutique_id = req.utilisateur.boutique_id;
+    const q = (req.query.q || '').trim();
+    if (q.length < 2) return res.json({ lignes: [], vendeurs: [], total_quantite: 0, total_montant: 0 });
+
+    const du = /^\d{4}-\d{2}-\d{2}$/.test(req.query.du || '') ? req.query.du : new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const au = /^\d{4}-\d{2}-\d{2}$/.test(req.query.au || '') ? req.query.au : new Date().toISOString().slice(0, 10);
+    const vendeur_id = Number(req.query.vendeur_id) || null;
+
+    const lignes = await sequelize.query(
+      `SELECT v.id AS vente_id, v.numero_recu, v.date_vente, v.utilisateur_id,
+              CONCAT(u.nom, ' ', IFNULL(u.prenom, '')) AS vendeur,
+              p.nom AS produit, pt.taille, d.quantite, d.prix_applique, d.sous_total,
+              c.nom AS client
+         FROM details_ventes d
+         JOIN ventes v ON v.id = d.vente_id
+         JOIN utilisateurs u ON u.id = v.utilisateur_id
+         JOIN produit_tailles pt ON pt.id = d.produit_taille_id
+         JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
+         JOIN produits p ON p.id = pv.produit_id
+         LEFT JOIN clients c ON c.id = v.client_id
+        WHERE v.boutique_id = :boutique_id
+          AND p.nom LIKE :motif
+          AND DATE(v.date_vente) BETWEEN :du AND :au
+          ${vendeur_id ? 'AND v.utilisateur_id = :vendeur_id' : ''}
+        ORDER BY v.date_vente DESC
+        LIMIT 500`,
+      { replacements: { boutique_id, motif: `%${q}%`, du, au, vendeur_id }, type: sequelize.QueryTypes.SELECT }
+    );
+
+    const parVendeur = {};
+    lignes.forEach((l) => {
+      const v = parVendeur[l.utilisateur_id] || (parVendeur[l.utilisateur_id] = { utilisateur_id: l.utilisateur_id, vendeur: l.vendeur.trim(), quantite: 0, montant: 0 });
+      v.quantite += Number(l.quantite);
+      v.montant += Number(l.sous_total);
+    });
+    const vendeurs = Object.values(parVendeur).sort((a, b) => b.quantite - a.quantite);
+
+    res.json({
+      lignes,
+      vendeurs,
+      total_quantite: vendeurs.reduce((a, v) => a + v.quantite, 0),
+      total_montant: vendeurs.reduce((a, v) => a + v.montant, 0),
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
+  }
+};

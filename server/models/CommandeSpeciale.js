@@ -14,10 +14,11 @@ const CommandeSpeciale = sequelize.define('CommandeSpeciale', {
   prix_total: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
   date_livraison_prevue: DataTypes.DATEONLY,
   statut: {
-    type: DataTypes.ENUM('en_attente', 'commandee', 'arrivee', 'livree', 'annulee'),
+    type: DataTypes.ENUM('en_attente', 'commandee', 'entrepot', 'en_transit', 'arrivee', 'livree', 'annulee'),
     defaultValue: 'en_attente',
   },
   observation: DataTypes.STRING(255),
+  code_suivi: DataTypes.STRING(20), // lien public de suivi envoyé au client
 }, { tableName: 'commandes_speciales' });
 
 module.exports = CommandeSpeciale;

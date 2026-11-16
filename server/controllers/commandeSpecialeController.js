@@ -1,16 +1,22 @@
-const { CommandeSpeciale, PaiementCommandeSpeciale, MoyenPaiement, Notification, Boutique } = require('../models');
+const crypto = require('crypto');
+const { CommandeSpeciale, PaiementCommandeSpeciale, SuiviCommandeSpeciale, MoyenPaiement, Notification, Boutique } = require('../models');
 const { envoyerRecuCommandeSpeciale } = require('../services/recuService');
 const { Op } = require('sequelize');
 const { avecSoldeCommande } = require('../utils/soldes');
 const { trouverOuCreerClient } = require('../utils/clients');
 
-const STATUTS = ['en_attente', 'commandee', 'arrivee', 'livree', 'annulee'];
-const INCLUS = [{ model: PaiementCommandeSpeciale, as: 'paiements', include: [{ model: MoyenPaiement }] }];
+const STATUTS = ['en_attente', 'commandee', 'entrepot', 'en_transit', 'arrivee', 'livree', 'annulee'];
+const INCLUS = [
+  { model: PaiementCommandeSpeciale, as: 'paiements', include: [{ model: MoyenPaiement }] },
+  { model: SuiviCommandeSpeciale, as: 'suivi' },
+];
+const ORDRE_SUIVI = [[{ model: SuiviCommandeSpeciale, as: 'suivi' }, 'id', 'ASC']];
+const nouveauCode = () => crypto.randomBytes(6).toString('hex').slice(0, 10);
 
 const nombre = (v) => (v === undefined || v === null || v === '' ? 0 : Number(v));
 
 async function charger(id, boutique_id) {
-  return CommandeSpeciale.findOne({ where: { id, boutique_id }, include: INCLUS });
+  return CommandeSpeciale.findOne({ where: { id, boutique_id }, include: INCLUS, order: ORDRE_SUIVI });
 }
 
 // GET /api/commandes-speciales?statut=&q=
@@ -21,7 +27,7 @@ exports.lister = async (req, res) => {
     const q = (req.query.q || '').trim();
     if (q) where[Op.or] = [{ client_nom: { [Op.like]: `%${q}%` } }, { article: { [Op.like]: `%${q}%` } }];
 
-    const commandes = await CommandeSpeciale.findAll({ where, include: INCLUS, order: [['created_at', 'DESC']] });
+    const commandes = await CommandeSpeciale.findAll({ where, include: INCLUS, order: [['created_at', 'DESC'], ...ORDRE_SUIVI] });
     res.json(commandes.map(avecSoldeCommande));
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
@@ -55,7 +61,9 @@ exports.creer = async (req, res) => {
       prix_total,
       date_livraison_prevue: date_livraison_prevue || null,
       observation,
+      code_suivi: nouveauCode(),
     });
+    await SuiviCommandeSpeciale.create({ commande_speciale_id: commande.id, statut: 'en_attente' });
 
     if (acompte > 0) {
       await PaiementCommandeSpeciale.create({
@@ -109,6 +117,9 @@ exports.changerStatut = async (req, res) => {
 
     const ancien = commande.statut;
     await commande.update({ statut });
+    if (statut !== ancien) {
+      await SuiviCommandeSpeciale.create({ commande_speciale_id: commande.id, statut, note: (req.body.note || '').trim().slice(0, 255) || null });
+    }
 
     if (statut === 'arrivee' && ancien !== 'arrivee') {
       await Notification.create({

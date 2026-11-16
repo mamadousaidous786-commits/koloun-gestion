@@ -8,6 +8,7 @@ import RouteProtegee from './components/RouteProtegee';
 import LayoutPrincipal from './layouts/LayoutPrincipal';
 
 import Connexion from './pages/Connexion';
+import Suivi from './pages/Suivi';
 const DashboardAdmin = lazy(() => import('./pages/DashboardAdmin'));
 const DashboardUtilisateur = lazy(() => import('./pages/DashboardUtilisateur'));
 const Produits = lazy(() => import('./pages/Produits'));
@@ -62,6 +63,7 @@ export default function App() {
         <ToastContainer theme="light" position="top-right" autoClose={3000} />
         <Routes>
           <Route path="/connexion" element={<Connexion />} />
+          <Route path="/suivi/:code" element={<Suivi />} />
 
           <Route element={<RouteProtegee><LayoutPrincipal /></RouteProtegee>}>
             <Route path="/tableau-de-bord" element={<TableauDeBordRouteur />} />

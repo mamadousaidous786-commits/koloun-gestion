@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { FiPlus, FiPrinter, FiSearch, FiStar, FiTrash2, FiImage, FiCalendar, FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { FiPlus, FiPrinter, FiSearch, FiStar, FiTrash2, FiImage, FiCalendar, FiChevronDown, FiChevronUp, FiLink } from 'react-icons/fi';
 import EnTete from '../components/EnTete';
 import Modal from '../components/Modal';
 import ChampClient from '../components/ChampClient';
@@ -17,9 +17,27 @@ import { formaterGNF, formaterDate, aujourdhui } from '../utils/format';
 const STATUTS = {
   en_attente: { label: 'En attente', classe: 'bg-amber-50 text-amber-700 ring-amber-200' },
   commandee: { label: 'Commandée', classe: 'bg-blue-50 text-blue-700 ring-blue-200' },
-  arrivee: { label: 'Arrivée', classe: 'bg-violet-50 text-violet-700 ring-violet-200' },
+  entrepot: { label: "À l'entrepôt", classe: 'bg-sky-50 text-sky-700 ring-sky-200' },
+  en_transit: { label: 'En route', classe: 'bg-indigo-50 text-indigo-700 ring-indigo-200' },
+  arrivee: { label: 'Arrivée à Conakry', classe: 'bg-violet-50 text-violet-700 ring-violet-200' },
   livree: { label: 'Livrée', classe: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
   annulee: { label: 'Annulée', classe: 'bg-slate-100 text-slate-500 ring-slate-200' },
+};
+
+// Étapes du suivi montrées au client
+const ETAPES = ['commandee', 'entrepot', 'en_transit', 'arrivee', 'livree'];
+const lienSuivi = (c) => `${window.location.origin}/suivi/${c.code_suivi}`;
+const messageSuivi = (c) => {
+  const phrases = {
+    en_attente: `Bonjour ${c.client_nom}, nous avons bien enregistré votre commande « ${c.article} » chez Koloun Luxure.`,
+    commandee: `Bonjour ${c.client_nom}, bonne nouvelle : votre commande « ${c.article} » a été passée ✅`,
+    entrepot: `Bonjour ${c.client_nom}, votre commande « ${c.article} » est arrivée à l'entrepôt 📦`,
+    en_transit: `Bonjour ${c.client_nom}, votre commande « ${c.article} » est en route vers Conakry ✈️`,
+    arrivee: `Bonjour ${c.client_nom}, votre commande « ${c.article} » est arrivée à Conakry 🎉${c.reste > 0 ? ` Il reste ${formaterGNF(c.reste)} à régler.` : ''}`,
+    livree: `Bonjour ${c.client_nom}, votre commande « ${c.article} » a été livrée. Merci de votre confiance !`,
+    annulee: `Bonjour ${c.client_nom}, votre commande « ${c.article} » a été annulée.`,
+  };
+  return `${phrases[c.statut] || phrases.en_attente}\n\nSuivez-la ici : ${lienSuivi(c)}`;
 };
 
 const MOYENS = [
@@ -114,7 +132,7 @@ export default function CommandesSpeciales() {
       !confirm(`Il reste ${formaterGNF(commande.reste)} à payer. Marquer quand même comme livrée ?`)) return;
     try {
       remplacer(await changerStatutCommandeSpeciale(commande.id, statut));
-      toast.success(`Statut : ${STATUTS[statut].label}`);
+      toast.success(`Statut : ${STATUTS[statut].label} — touchez WhatsApp pour prévenir le client.`);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Erreur.');
     }
@@ -200,6 +218,23 @@ export default function CommandesSpeciales() {
                 </div>
               </div>
 
+              {c.statut !== 'annulee' && (
+                <div className="mt-4">
+                  <div className="flex items-center">
+                    {ETAPES.map((e, i) => {
+                      const atteint = ETAPES.indexOf(c.statut) >= i;
+                      return (
+                        <React.Fragment key={e}>
+                          <div className={`w-3 h-3 rounded-full shrink-0 ${atteint ? 'bg-blue-600' : 'bg-slate-200'}`} title={STATUTS[e].label} />
+                          {i < ETAPES.length - 1 && <div className={`h-0.5 flex-1 ${ETAPES.indexOf(c.statut) > i ? 'bg-blue-600' : 'bg-slate-200'}`} />}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1.5">Suivi : <b>{STATUTS[c.statut].label}</b>{c.suivi?.length ? ` · depuis le ${new Date(c.suivi[c.suivi.length - 1].created_at).toLocaleDateString('fr-FR')}` : ''}</p>
+                </div>
+              )}
+
               <div className="flex flex-wrap items-center gap-2 mt-4">
                 <select value={c.statut} onChange={(e) => changerStatut(c, e.target.value)} className="input-champ !w-auto !py-2 text-xs">
                   {Object.entries(STATUTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -212,10 +247,14 @@ export default function CommandesSpeciales() {
                 </button>
                 <BoutonsContact
                   telephone={c.client_telephone}
-                  message={c.statut === 'arrivee'
-                    ? `Bonjour ${c.client_nom}, votre commande « ${c.article} » est arrivée chez Koloun Luxure.${c.reste > 0 ? ` Il reste ${formaterGNF(c.reste)} à régler.` : ''}`
-                    : `Bonjour ${c.client_nom}, concernant votre commande « ${c.article} » chez Koloun Luxure.`}
+                  message={messageSuivi(c)}
                 />
+                {c.code_suivi && (
+                  <button onClick={() => { navigator.clipboard?.writeText(lienSuivi(c)).then(() => toast.success('Lien de suivi copié.')).catch(() => toast.info(lienSuivi(c))); }}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-2.5 py-2" title="Copier le lien de suivi du client">
+                    <FiLink size={13} /> Lien de suivi
+                  </button>
+                )}
                 {estAdmin && (
                   <button onClick={() => supprimer(c)} className="ml-auto p-2 text-slate-400 hover:text-red-600" title="Supprimer"><FiTrash2 size={15} /></button>
                 )}
