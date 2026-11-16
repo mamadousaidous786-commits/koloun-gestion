@@ -27,10 +27,6 @@ const clotureRoutes = require('./routes/clotureRoutes');
 const rapportRoutes = require('./routes/rapportRoutes');
 const sauvegardeRoutes = require('./routes/sauvegardeRoutes');
 
-// Le serveur ne doit jamais s'arrêter à cause d'une erreur isolée
-process.on('uncaughtException', (e) => console.error('Erreur non gérée :', e && e.message));
-process.on('unhandledRejection', (e) => console.error('Promesse rejetée :', e && e.message));
-
 const app = express();
 app.set('trust proxy', 1); // derrière le proxy de Render : adresses https correctes
 
@@ -69,11 +65,6 @@ app.get('/', (req, res) => {
 
 // Gestion des erreurs globales
 app.use((err, req, res, next) => {
-  if (err && (err.name === 'MulterError' || /images sont autoris/.test(err.message || ''))) {
-    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Une photo est trop lourde (12 Mo maximum).'
-      : err.code === 'LIMIT_UNEXPECTED_FILE' ? 'Trop de photos (30 maximum par enregistrement).' : err.message;
-    return res.status(400).json({ message });
-  }
   console.error(err.stack);
   res.status(500).json({ message: 'Erreur interne du serveur.', erreur: err.message });
 });

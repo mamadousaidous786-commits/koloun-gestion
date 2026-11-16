@@ -8,6 +8,8 @@ import { useAuth } from '../context/AuthContext';
 import logo from '../assets/logo.jpeg';
 import ErreurLimite from '../components/ErreurLimite';
 import BoutonInstaller from '../components/BoutonInstaller';
+import BoutonAlertes from '../components/BoutonAlertes';
+import { resynchroniserAlertes } from '../utils/pwa';
 import { prechargerDonnees } from '../services/api';
 
 export default function LayoutPrincipal() {
@@ -17,7 +19,7 @@ export default function LayoutPrincipal() {
   const [versionPage, setVersionPage] = useState(0);
 
   // Au démarrage : on charge les données principales en arrière-plan
-  useEffect(() => { prechargerDonnees(); }, []);
+  useEffect(() => { prechargerDonnees(); resynchroniserAlertes(); }, []);
 
   // Données rafraîchies en silence : on remet à jour uniquement les pages de consultation (jamais un formulaire en cours)
   useEffect(() => {
@@ -103,6 +105,7 @@ export default function LayoutPrincipal() {
           </Section>
         </nav>
 
+        <BoutonAlertes className="px-3 mb-2" />
         <BoutonInstaller className="px-3" />
 
         <div className="p-4 m-3 rounded-2xl bg-white/10">

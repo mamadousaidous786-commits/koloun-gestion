@@ -24,6 +24,10 @@ const PaiementDette = require('./PaiementDette');
 const Depense = require('./Depense');
 const ClotureCaisse = require('./ClotureCaisse');
 const GroupeCommande = require('./GroupeCommande');
+const PushAbonnement = require('./PushAbonnement');
+const { brancherNotifications } = require('../utils/push');
+
+brancherNotifications(Notification);
 
 // ---- Boutique ----
 Boutique.hasMany(Utilisateur, { foreignKey: 'boutique_id' });
@@ -153,4 +157,5 @@ module.exports = {
   Depense,
   ClotureCaisse,
   GroupeCommande,
+  PushAbonnement,
 };

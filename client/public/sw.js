@@ -2,7 +2,7 @@
    - Fichiers de l'application (JS/CSS/images) : servis depuis le cache, mis à jour en arrière-plan.
    - Pages : réseau d'abord, sinon la dernière version en cache (ouverture même sans connexion).
    - Données de l'API : JAMAIS mises en cache ici (toujours à jour). */
-const VERSION = 'kl-v8';
+const VERSION = 'kl-v9';
 const COQUILLE = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/logo.jpeg'];
 
 self.addEventListener('install', (e) => {
@@ -39,4 +39,37 @@ self.addEventListener('fetch', (e) => {
       return enCache || reseau;
     })
   );
+});
+
+// ---- Alertes (notifications push) : s'affichent même application fermée ----
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { titre: 'Koloun Luxure', corps: e.data && e.data.text() }; }
+  e.waitUntil((async () => {
+    await self.registration.showNotification(d.titre || 'Koloun Luxure', {
+      body: d.corps || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: d.tag || undefined,
+      renotify: !!d.tag,
+      vibrate: [200, 100, 200, 100, 300],
+      requireInteraction: !!d.urgent,
+      data: { url: d.url || '/notifications' },
+    });
+    // Application ouverte : on demande aussi un petit bip
+    const fenetres = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    fenetres.forEach((c) => c.postMessage({ type: 'son' }));
+  })());
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil((async () => {
+    const fenetres = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of fenetres) {
+      if ('focus' in c) { await c.focus(); if ('navigate' in c) c.navigate(url).catch(() => {}); return; }
+    }
+    await self.clients.openWindow(url);
+  })());
 });
