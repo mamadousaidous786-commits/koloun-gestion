@@ -31,7 +31,8 @@ exports.obtenir = async (req, res) => {
     const totalAchats = await Vente.sum('montant_total', { where: { client_id: client.id, boutique_id } }) || 0;
     const nombreAchats = await Vente.count({ where: { client_id: client.id, boutique_id } });
 
-    const commandes = (await CommandeSpeciale.findAll({
+    const estAdmin = req.utilisateur.role === 'admin';
+    const commandes = !estAdmin ? [] : (await CommandeSpeciale.findAll({
       where: { client_id: client.id, boutique_id },
       include: [{ model: PaiementCommandeSpeciale, as: 'paiements' }],
       order: [['created_at', 'DESC']],

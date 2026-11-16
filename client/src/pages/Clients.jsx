@@ -130,6 +130,8 @@ export default function Clients() {
             </ul>
           )}
 
+          {estAdmin && (
+            <>
           <h3 className="text-sm font-semibold text-slate-900 mb-2">Commandes spéciales</h3>
           {fiche.commandes_speciales.length === 0 ? <p className="text-sm text-slate-400 mb-5">Aucune.</p> : (
             <ul className="mb-5 divide-y divide-slate-100 text-sm">
@@ -140,6 +142,9 @@ export default function Clients() {
                 </li>
               ))}
             </ul>
+          )}
+
+            </>
           )}
 
           {estAdmin && (

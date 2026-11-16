@@ -69,7 +69,7 @@ export default function App() {
             <Route path="/tableau-de-bord" element={<TableauDeBordRouteur />} />
             <Route path="/produits" element={<Produits />} />
             <Route path="/ventes" element={<Ventes />} />
-            <Route path="/commandes-speciales" element={<CommandesSpeciales />} />
+            <Route path="/commandes-speciales" element={<Admin><CommandesSpeciales /></Admin>} />
             <Route path="/clients" element={<Clients />} />
             <Route path="/notifications" element={<Notifications />} />
 

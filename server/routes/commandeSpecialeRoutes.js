@@ -4,7 +4,7 @@ const ctrl = require('../controllers/commandeSpecialeController');
 const { verifierToken, autoriserRoles } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
-router.use(verifierToken);
+router.use(verifierToken, autoriserRoles('admin')); // réservé à l'administrateur
 router.get('/', ctrl.lister);
 router.post('/', upload.single('image'), ctrl.creer);
 router.put('/:id', upload.single('image'), ctrl.modifier);
