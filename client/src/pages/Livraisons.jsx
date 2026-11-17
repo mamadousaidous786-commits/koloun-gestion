@@ -176,18 +176,18 @@ export default function Livraisons() {
         <Modal titre={edition ? `Modifier ${edition.numero}` : 'Nouvelle livraison'} onClose={() => setModal(false)}>
           <form onSubmit={soumettre} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><label className="etiquette">Nom du client</label><input required className="input-champ" value={f.client_nom} onChange={(e) => setF({ ...f, client_nom: e.target.value })} /></div>
+              <div><label className="etiquette">Nom du client (facultatif)</label><input className="input-champ" value={f.client_nom} onChange={(e) => setF({ ...f, client_nom: e.target.value })} /></div>
               <div><label className="etiquette">Téléphone</label><input className="input-champ" inputMode="tel" value={f.client_telephone} onChange={(e) => setF({ ...f, client_telephone: e.target.value })} /></div>
             </div>
             <div><label className="etiquette">Adresse / quartier</label><input className="input-champ" placeholder="Ex : Kipé, près de la station" value={f.adresse} onChange={(e) => setF({ ...f, adresse: e.target.value })} /></div>
             <div>
-              <label className="etiquette">Articles à livrer (une photo et une taille par article)</label>
+              <label className="etiquette">Articles à livrer (nom, taille et photo facultatifs)</label>
               <div className="space-y-3">
                 {f.lignes.map((l, i) => (
                   <div key={i} className="rounded-xl border border-slate-200 p-3">
                     <div className="grid grid-cols-3 gap-2">
-                      <input required className="input-champ col-span-2" placeholder="Article (ex : Robe bleue)" value={l.designation} onChange={(e) => majLigne(i, { designation: e.target.value })} />
-                      <input className="input-champ" placeholder="Taille" value={l.taille} onChange={(e) => majLigne(i, { taille: e.target.value })} />
+                      <input className="input-champ col-span-2" placeholder="Article (facultatif)" value={l.designation} onChange={(e) => majLigne(i, { designation: e.target.value })} />
+                      <input className="input-champ" placeholder="Taille (facultatif)" value={l.taille} onChange={(e) => majLigne(i, { taille: e.target.value })} />
                     </div>
                     <div className="flex items-center gap-3 mt-2">
                       {(l.photo || l.image) && <img alt="" className="w-12 h-12 rounded-lg object-cover bg-slate-100" src={l.photo ? URL.createObjectURL(l.photo) : urlFichier(l.image, 150)} />}

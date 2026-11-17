@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Livraison, LivraisonArticle, Utilisateur } = require('../models');
+const { Livraison, LivraisonArticle, Utilisateur, Notification } = require('../models');
 
 const nombre = (v) => { const n = Number(String(v ?? '').replace(/\s/g, '')); return Number.isFinite(n) ? n : 0; };
 const jourValide = (j) => (/^\d{4}-\d{2}-\d{2}$/.test(j || '') ? j : new Date().toISOString().slice(0, 10));
@@ -16,7 +16,8 @@ function lignesArticles(req) {
       taille: String(l.taille || '').trim() || null,
       image: fichiers[`image_${i}`] || (l.image ? String(l.image) : null),
     }))
-    .filter((l) => l.designation);
+    .filter((l) => l.designation || l.taille || l.image) // une ligne vide est ignorée ; nom, taille et photo sont facultatifs
+    .map((l) => ({ ...l, designation: l.designation || 'Article' }));
 }
 
 // Anciennes livraisons (sans lignes) : on fabrique une ligne à partir des champs d'origine
@@ -32,6 +33,12 @@ const resume = (lignes) => ({
   taille: lignes.map((l) => l.taille).filter(Boolean).join(', ').slice(0, 30) || null,
   image: lignes.find((l) => l.image)?.image || null,
 });
+
+// Notification dans l'application + alerte sur les téléphones des autres utilisateurs (sans bloquer la réponse)
+function prevenir(req, type, message) {
+  Notification.create({ boutique_id: req.utilisateur.boutique_id, utilisateur_id: req.utilisateur.id, type, message: message.slice(0, 255) })
+    .catch((e) => console.error('Notification livraison :', e.message));
+}
 
 const INCLUS = [
   { model: LivraisonArticle, as: 'articles', required: false },
@@ -59,9 +66,8 @@ exports.creer = async (req, res) => {
   try {
     const boutique_id = req.utilisateur.boutique_id;
     const { client_nom, client_telephone, adresse, livreur, note } = req.body;
-    if (!client_nom || !client_nom.trim()) return res.status(400).json({ message: 'Indiquez le nom du client.' });
     const lignes = lignesArticles(req);
-    if (lignes.length === 0) return res.status(400).json({ message: "Ajoutez au moins un article à livrer." });
+    if (lignes.length === 0) return res.status(400).json({ message: "Ajoutez au moins un article (nom, taille ou photo)." });
     const date_livraison = jourValide(req.body.date_livraison);
 
     const prefixe = `LIV-${date_livraison.replace(/-/g, '')}-`;
@@ -70,7 +76,7 @@ exports.creer = async (req, res) => {
       boutique_id,
       numero: `${prefixe}${String(nb + 1).padStart(3, '0')}`,
       date_livraison,
-      client_nom: client_nom.trim(),
+      client_nom: (client_nom || '').trim() || 'Client',
       client_telephone: client_telephone || null,
       adresse: adresse || null,
       ...resume(lignes),
@@ -81,6 +87,7 @@ exports.creer = async (req, res) => {
       cree_par: req.utilisateur.id,
     });
     await LivraisonArticle.bulkCreate(lignes.map((l) => ({ ...l, livraison_id: livraison.id })));
+    prevenir(req, 'livraison_nouvelle', `Nouvelle livraison ${livraison.numero} : ${livraison.article} pour ${livraison.client_nom}${livraison.adresse ? ` (${livraison.adresse})` : ''}.`);
     res.status(201).json(avecArticles(await Livraison.findByPk(livraison.id, { include: INCLUS })));
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
@@ -95,9 +102,9 @@ exports.modifier = async (req, res) => {
     if (l.statut !== 'en_cours' && req.utilisateur.role !== 'admin') return res.status(400).json({ message: 'Cette livraison est déjà clôturée.' });
     const b = req.body;
     const lignes = lignesArticles(req);
-    if (lignes.length === 0) return res.status(400).json({ message: 'Ajoutez au moins un article à livrer.' });
+    if (lignes.length === 0) return res.status(400).json({ message: 'Ajoutez au moins un article (nom, taille ou photo).' });
     await l.update({
-      client_nom: (b.client_nom || l.client_nom).trim(),
+      client_nom: (b.client_nom ?? l.client_nom ?? '').trim() || 'Client',
       client_telephone: b.client_telephone ?? l.client_telephone,
       adresse: b.adresse ?? l.adresse,
       ...resume(lignes),
@@ -132,6 +139,10 @@ exports.changerStatut = async (req, res) => {
       valide_par: statut === 'en_cours' ? null : req.utilisateur.id,
       date_validation: statut === 'en_cours' ? null : new Date(),
     });
+    if (statut !== 'en_cours') {
+      prevenir(req, statut === 'livree' ? 'livraison_livree' : 'livraison_annulee',
+        statut === 'livree' ? `Livraison ${l.numero} effectuée : ${l.article} pour ${l.client_nom}.` : `Livraison ${l.numero} annulée (${l.motif}) : ${l.article} pour ${l.client_nom}.`);
+    }
     res.json(avecArticles(await Livraison.findByPk(l.id, { include: INCLUS })));
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
