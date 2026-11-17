@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/boutiqueController');
-const { verifierToken } = require('../middleware/auth');
+const compte = require('../controllers/compteController');
+const { verifierToken, autoriserRoles } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 // Limite simple contre les envois répétés de commandes (par adresse IP)
@@ -25,6 +26,13 @@ router.get('/speciales', ctrl.speciales);
 router.post('/commandes', limiterCommandes, ctrl.creerCommande);
 router.get('/commandes/:code', ctrl.voirCommande);
 
+// ---- Comptes clients (une seule porte : un compte Koloun Gestion ouvre l'espace vendeur) ----
+router.post('/auth/inscription', compte.inscription);
+router.post('/auth/connexion', compte.connexion);
+router.post('/auth/google', compte.google);
+router.get('/compte', compte.exigerCompte, compte.monCompte);
+router.put('/compte', compte.exigerCompte, compte.modifierCompte);
+
 // ---- Vendeur : tout utilisateur connecté à Koloun Gestion ----
 router.get('/admin/commandes', verifierToken, ctrl.listerCommandes);
 router.get('/admin/commandes/:id', verifierToken, ctrl.obtenirCommande);
@@ -35,5 +43,11 @@ router.put('/admin/speciales/:id', verifierToken, upload.array('images', 12), ct
 router.delete('/admin/speciales/:id', verifierToken, ctrl.retirerSpeciale);
 router.get('/admin/produits', verifierToken, ctrl.listerProduitsAdmin);
 router.patch('/admin/produits/:id', verifierToken, ctrl.reglerProduit);
+
+// ---- Clients inscrits : réservé à l'administrateur ----
+router.get('/admin/clients', verifierToken, autoriserRoles('admin'), compte.listerClients);
+router.get('/admin/clients/:id/commandes', verifierToken, autoriserRoles('admin'), compte.commandesClient);
+router.patch('/admin/clients/:id', verifierToken, autoriserRoles('admin'), compte.reglerClient);
+router.post('/admin/clients/:id/reinitialiser', verifierToken, autoriserRoles('admin'), compte.reinitialiserMotDePasse);
 
 module.exports = router;

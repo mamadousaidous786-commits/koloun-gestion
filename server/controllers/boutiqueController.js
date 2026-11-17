@@ -7,6 +7,7 @@
 const crypto = require('crypto');
 const sequelize = require('../config/database');
 const { Notification } = require('../models');
+const { lireCompte } = require('./compteController');
 
 const BOUTIQUE_ID = Number(process.env.BOUTIQUE_PUBLIQUE_ID || 1);
 const SELECT = { type: sequelize.QueryTypes.SELECT };
@@ -192,10 +193,10 @@ exports.creerCommande = async (req, res) => {
     const code = crypto.randomBytes(8).toString('hex');
 
     const [id] = await sequelize.query(
-      `INSERT INTO boutique_commandes (boutique_id, reference, code, type, statut, client_nom, client_telephone, note_client, total_initial, total_final)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO boutique_commandes (boutique_id, reference, code, type, statut, client_nom, client_telephone, note_client, total_initial, total_final, compte_client_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       { type: sequelize.QueryTypes.INSERT, replacements: [BOUTIQUE_ID, reference, code, type, intention === 'discuter' ? 'en_discussion' : 'nouvelle',
-        String(client_nom).trim().slice(0, 150), String(client_telephone).trim().slice(0, 50), note ? String(note).slice(0, 500) : null, total, total], transaction: t });
+        String(client_nom).trim().slice(0, 150), String(client_telephone).trim().slice(0, 50), note ? String(note).slice(0, 500) : null, total, total, lireCompte(req)?.compte_id || null], transaction: t });
 
     for (const l of lignes) {
       await sequelize.query(
