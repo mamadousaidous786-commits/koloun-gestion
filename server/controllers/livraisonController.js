@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Livraison, LivraisonArticle, Utilisateur, Notification } = require('../models');
+const { Livraison, LivraisonArticle, Utilisateur } = require('../models');
 
 const nombre = (v) => { const n = Number(String(v ?? '').replace(/\s/g, '')); return Number.isFinite(n) ? n : 0; };
 const jourValide = (j) => (/^\d{4}-\d{2}-\d{2}$/.test(j || '') ? j : new Date().toISOString().slice(0, 10));
@@ -32,12 +32,6 @@ const resume = (lignes) => ({
   taille: lignes.map((l) => l.taille).filter(Boolean).join(', ').slice(0, 30) || null,
   image: lignes.find((l) => l.image)?.image || null,
 });
-
-// Notification dans l'application + alerte sur les téléphones des autres utilisateurs (sans bloquer la réponse)
-function prevenir(req, type, message) {
-  Notification.create({ boutique_id: req.utilisateur.boutique_id, utilisateur_id: req.utilisateur.id, type, message: message.slice(0, 255) })
-    .catch((e) => console.error('Notification livraison :', e.message));
-}
 
 const INCLUS = [
   { model: LivraisonArticle, as: 'articles', required: false },
@@ -87,7 +81,6 @@ exports.creer = async (req, res) => {
       cree_par: req.utilisateur.id,
     });
     await LivraisonArticle.bulkCreate(lignes.map((l) => ({ ...l, livraison_id: livraison.id })));
-    prevenir(req, 'livraison_nouvelle', `Nouvelle livraison ${livraison.numero} : ${livraison.article} pour ${livraison.client_nom}${livraison.adresse ? ` (${livraison.adresse})` : ''}.`);
     res.status(201).json(avecArticles(await Livraison.findByPk(livraison.id, { include: INCLUS })));
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
@@ -139,10 +132,6 @@ exports.changerStatut = async (req, res) => {
       valide_par: statut === 'en_cours' ? null : req.utilisateur.id,
       date_validation: statut === 'en_cours' ? null : new Date(),
     });
-    if (statut !== 'en_cours') {
-      prevenir(req, statut === 'livree' ? 'livraison_livree' : 'livraison_annulee',
-        statut === 'livree' ? `Livraison ${l.numero} effectuée : ${l.article} pour ${l.client_nom}.` : `Livraison ${l.numero} annulée (${l.motif}) : ${l.article} pour ${l.client_nom}.`);
-    }
     res.json(avecArticles(await Livraison.findByPk(l.id, { include: INCLUS })));
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
