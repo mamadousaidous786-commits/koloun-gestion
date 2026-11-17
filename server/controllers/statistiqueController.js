@@ -99,19 +99,18 @@ exports.produitsPlusVendus = async (req, res) => {
   try {
     const boutique_id = req.utilisateur.boutique_id;
 
-    const resultats = await DetailVente.findAll({
-      attributes: [
-        [fn('SUM', col('DetailVente.quantite')), 'quantite_vendue'],
-        [fn('SUM', col('DetailVente.sous_total')), 'chiffre_affaires'],
-      ],
-      include: [
-        { model: ProduitTaille, attributes: [], include: [{ model: ProduitVariante, attributes: ['produit_id'], include: [{ model: Produit, attributes: ['nom'], where: { boutique_id } }] }] },
-        { model: Vente, attributes: [], where: { boutique_id } },
-      ],
-      group: ['ProduitTaille->ProduitVariante->Produit.id'],
-      order: [[literal('quantite_vendue'), 'DESC']],
-      limit: 10,
-    });
+    const resultats = await sequelize.query(
+      `SELECT COALESCE(d.produit_nom, p.nom) AS nom, SUM(d.quantite) AS quantite_vendue, SUM(d.sous_total) AS chiffre_affaires
+         FROM details_ventes d
+         JOIN ventes v ON v.id = d.vente_id
+         LEFT JOIN produit_tailles pt ON pt.id = d.produit_taille_id
+         LEFT JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
+         LEFT JOIN produits p ON p.id = pv.produit_id
+        WHERE v.boutique_id = :boutique_id
+        GROUP BY COALESCE(d.produit_nom, p.nom)
+        ORDER BY quantite_vendue DESC LIMIT 10`,
+      { replacements: { boutique_id }, type: sequelize.QueryTypes.SELECT }
+    );
 
     res.json(resultats);
   } catch (error) {
@@ -125,20 +124,24 @@ exports.rechercheIntelligente = async (req, res) => {
     const boutique_id = req.utilisateur.boutique_id;
     const { terme } = req.query;
 
-    const resultats = await DetailVente.findAll({
-      include: [
-        { model: ProduitTaille, include: [{ model: ProduitVariante, include: [{ model: Produit, where: { boutique_id, nom: { [Op.like]: `%${terme}%` } } }] }] },
-        { model: Vente, where: { boutique_id }, include: [MoyenPaiement] },
-      ],
-    });
+    const lignes = await sequelize.query(
+      `SELECT d.quantite, d.sous_total, m.nom AS moyen
+         FROM details_ventes d
+         JOIN ventes v ON v.id = d.vente_id
+         JOIN moyens_paiement m ON m.id = v.moyen_paiement_id
+         LEFT JOIN produit_tailles pt ON pt.id = d.produit_taille_id
+         LEFT JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
+         LEFT JOIN produits p ON p.id = pv.produit_id
+        WHERE v.boutique_id = :boutique_id AND COALESCE(d.produit_nom, p.nom) LIKE :motif`,
+      { replacements: { boutique_id, motif: `%${terme}%` }, type: sequelize.QueryTypes.SELECT }
+    );
 
-    const nombreVendu = resultats.reduce((acc, r) => acc + r.quantite, 0);
-    const chiffreAffaires = resultats.reduce((acc, r) => acc + Number(r.sous_total), 0);
+    const nombreVendu = lignes.reduce((acc, r) => acc + Number(r.quantite), 0);
+    const chiffreAffaires = lignes.reduce((acc, r) => acc + Number(r.sous_total), 0);
 
     const parMoyenPaiement = {};
-    resultats.forEach((r) => {
-      const nomMoyen = r.Vente.MoyenPaiement.nom;
-      parMoyenPaiement[nomMoyen] = (parMoyenPaiement[nomMoyen] || 0) + Number(r.sous_total);
+    lignes.forEach((r) => {
+      parMoyenPaiement[r.moyen] = (parMoyenPaiement[r.moyen] || 0) + Number(r.sous_total);
     });
 
     res.json({
@@ -179,7 +182,7 @@ exports.comptabilite = async (req, res) => {
     const totalParMoyen = {};
 
     details.forEach((detail) => {
-      const nomProduit = detail.ProduitTaille.ProduitVariante.Produit.nom;
+      const nomProduit = detail.produit_nom || detail.ProduitTaille?.ProduitVariante?.Produit?.nom || 'Produit supprimé';
       const nomMoyen = detail.Vente.MoyenPaiement.nom;
       const montant = Number(detail.sous_total);
 
@@ -225,14 +228,14 @@ exports.graphiques = async (req, res) => {
          FROM ventes v JOIN moyens_paiement m ON m.id = v.moyen_paiement_id
          WHERE v.boutique_id=:b AND v.date_vente >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
          GROUP BY m.nom ORDER BY total DESC`),
-      q(`SELECT p.nom AS nom, SUM(d.quantite) AS quantite, SUM(d.sous_total) AS chiffre_affaires
+      q(`SELECT COALESCE(d.produit_nom, p.nom) AS nom, SUM(d.quantite) AS quantite, SUM(d.sous_total) AS chiffre_affaires
          FROM details_ventes d
          JOIN ventes v ON v.id = d.vente_id
-         JOIN produit_tailles pt ON pt.id = d.produit_taille_id
-         JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
-         JOIN produits p ON p.id = pv.produit_id
+         LEFT JOIN produit_tailles pt ON pt.id = d.produit_taille_id
+         LEFT JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
+         LEFT JOIN produits p ON p.id = pv.produit_id
          WHERE v.boutique_id=:b AND v.date_vente >= DATE_SUB(CURDATE(), INTERVAL 89 DAY)
-         GROUP BY p.id, p.nom ORDER BY quantite DESC LIMIT 8`),
+         GROUP BY COALESCE(d.produit_nom, p.nom) ORDER BY quantite DESC LIMIT 8`),
       q(`SELECT DAYOFWEEK(date_vente) AS jour, SUM(montant_total) AS total, COUNT(*) AS nb
          FROM ventes WHERE boutique_id=:b AND date_vente >= DATE_SUB(CURDATE(), INTERVAL 89 DAY)
          GROUP BY jour ORDER BY jour`),

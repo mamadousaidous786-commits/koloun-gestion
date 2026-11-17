@@ -32,7 +32,7 @@ exports.creerVente = async (req, res) => {
     const [tailles, client, numeroRecu] = await Promise.all([
       ProduitTaille.findAll({
         where: { id: ids },
-        include: [{ model: ProduitVariante, attributes: ['id'], include: [{ model: Produit, attributes: ['id', 'nom'], where: { boutique_id } }] }],
+        include: [{ model: ProduitVariante, attributes: ['id'], include: [{ model: Produit, attributes: ['id', 'nom', 'prix_normal'], where: { boutique_id } }] }],
       }),
       client_id ? Client.findOne({ where: { id: client_id, boutique_id }, attributes: ['id'] }) : null,
       genererNumeroRecu(),
@@ -64,13 +64,19 @@ exports.creerVente = async (req, res) => {
       numero_recu: numeroRecu, montant_total: montantTotal, observation,
     }, { transaction });
 
-    await DetailVente.bulkCreate(articles.map((a) => ({
-      vente_id: vente.id,
-      produit_taille_id: a.produit_taille_id,
-      quantite: a.quantite,
-      prix_applique: a.prix_applique,
-      sous_total: Number(a.prix_applique) * Number(a.quantite),
-    })), { transaction });
+    await DetailVente.bulkCreate(articles.map((a) => {
+      const t = parId.get(Number(a.produit_taille_id));
+      return {
+        vente_id: vente.id,
+        produit_taille_id: a.produit_taille_id,
+        produit_nom: t.ProduitVariante.Produit.nom, // copie conservée dans l'historique même si le produit est supprimé
+        taille_nom: t.taille,
+        prix_normal: t.ProduitVariante.Produit.prix_normal,
+        quantite: a.quantite,
+        prix_applique: a.prix_applique,
+        sous_total: Number(a.prix_applique) * Number(a.quantite),
+      };
+    }), { transaction });
 
     // Décrément du stock en UNE requête, protégé contre deux ventes simultanées
     const cas = [...demande].map(([id, qte]) => `WHEN ${Number(id)} THEN ${Number(qte)}`).join(' ');
@@ -181,7 +187,7 @@ exports.supprimerVente = async (req, res) => {
 
     // Restaure le stock pour chaque article vendu
     for (const detail of vente.DetailVentes) {
-      const taille = await ProduitTaille.findByPk(detail.produit_taille_id, { transaction });
+      const taille = detail.produit_taille_id ? await ProduitTaille.findByPk(detail.produit_taille_id, { transaction }) : null;
       if (taille) {
         taille.quantite += detail.quantite;
         await taille.save({ transaction });
@@ -219,17 +225,17 @@ exports.rechercheProduit = async (req, res) => {
     const lignes = await sequelize.query(
       `SELECT v.id AS vente_id, v.numero_recu, v.date_vente, v.utilisateur_id,
               CONCAT(u.nom, ' ', IFNULL(u.prenom, '')) AS vendeur,
-              p.nom AS produit, pt.taille, d.quantite, d.prix_applique, d.sous_total,
+              COALESCE(d.produit_nom, p.nom) AS produit, COALESCE(d.taille_nom, pt.taille) AS taille, d.quantite, d.prix_applique, d.sous_total,
               c.nom AS client
          FROM details_ventes d
          JOIN ventes v ON v.id = d.vente_id
          JOIN utilisateurs u ON u.id = v.utilisateur_id
-         JOIN produit_tailles pt ON pt.id = d.produit_taille_id
-         JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
-         JOIN produits p ON p.id = pv.produit_id
+         LEFT JOIN produit_tailles pt ON pt.id = d.produit_taille_id
+         LEFT JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
+         LEFT JOIN produits p ON p.id = pv.produit_id
          LEFT JOIN clients c ON c.id = v.client_id
         WHERE v.boutique_id = :boutique_id
-          AND p.nom LIKE :motif
+          AND COALESCE(d.produit_nom, p.nom) LIKE :motif
           AND DATE(v.date_vente) BETWEEN :du AND :au
           ${vendeur_id ? 'AND v.utilisateur_id = :vendeur_id' : ''}
         ORDER BY v.date_vente DESC

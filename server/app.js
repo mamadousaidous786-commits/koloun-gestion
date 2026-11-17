@@ -113,6 +113,43 @@ async function migrerSuivi() {
     WHERE NOT EXISTS (SELECT 1 FROM suivi_commandes_speciales s WHERE s.commande_speciale_id = c.id)`));
 }
 
+async function migrerHistoriqueVentes() {
+  const etape = async (nom, fn) => { try { await fn(); } catch (e) { console.error(`⚠️ Historique des ventes (${nom}) :`, e.message); } };
+  const q = (sql) => sequelize.query(sql);
+  const colonne = async (nom) => {
+    const [r] = await sequelize.query(
+      "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'details_ventes' AND COLUMN_NAME = :nom",
+      { replacements: { nom }, type: sequelize.QueryTypes.SELECT }
+    );
+    return Number(r.n) > 0;
+  };
+  await etape('colonnes', async () => {
+    if (!(await colonne('produit_nom'))) await q('ALTER TABLE details_ventes ADD COLUMN produit_nom VARCHAR(200) NULL');
+    if (!(await colonne('taille_nom'))) await q('ALTER TABLE details_ventes ADD COLUMN taille_nom VARCHAR(50) NULL');
+    if (!(await colonne('prix_normal'))) await q('ALTER TABLE details_ventes ADD COLUMN prix_normal DECIMAL(12,2) NULL');
+  });
+  await etape('copie des ventes existantes', () => q(`UPDATE details_ventes d
+      JOIN produit_tailles pt ON pt.id = d.produit_taille_id
+      JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
+      JOIN produits p ON p.id = pv.produit_id
+      SET d.produit_nom = p.nom, d.taille_nom = pt.taille, d.prix_normal = p.prix_normal
+      WHERE d.produit_nom IS NULL`));
+  await etape('lien produit', async () => {
+    const lignesFk = await sequelize.query(
+      `SELECT k.CONSTRAINT_NAME AS nom, r.DELETE_RULE AS regle
+         FROM information_schema.KEY_COLUMN_USAGE k
+         JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_NAME = k.CONSTRAINT_NAME AND r.CONSTRAINT_SCHEMA = k.TABLE_SCHEMA
+        WHERE k.TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = 'details_ventes' AND k.COLUMN_NAME = 'produit_taille_id' AND k.REFERENCED_TABLE_NAME = 'produit_tailles'`,
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    const fk = lignesFk[0];
+    if (fk && fk.regle === 'SET NULL') return;
+    if (fk) await q(`ALTER TABLE details_ventes DROP FOREIGN KEY \`${fk.nom}\``);
+    await q('ALTER TABLE details_ventes MODIFY COLUMN produit_taille_id INT NULL');
+    await q('ALTER TABLE details_ventes ADD CONSTRAINT fk_details_taille FOREIGN KEY (produit_taille_id) REFERENCES produit_tailles(id) ON DELETE SET NULL');
+  });
+}
+
 async function migrerBase() {
   try {
     await sequelize.query(`CREATE TABLE IF NOT EXISTS groupes_commande (
@@ -139,6 +176,7 @@ async function migrerBase() {
     )`);
     // Suivi des commandes spéciales : chaque étape est indépendante (un échec n'empêche pas les autres)
     await migrerSuivi();
+    await migrerHistoriqueVentes();
     try {
       await sequelize.query(`CREATE TABLE IF NOT EXISTS livraisons (
         id INT AUTO_INCREMENT PRIMARY KEY,

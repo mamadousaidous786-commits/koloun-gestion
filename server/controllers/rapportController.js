@@ -56,7 +56,7 @@ exports.mensuel = async (req, res) => {
     // ---- Produits les plus vendus ----
     const parProduit = {};
     details.forEach((d) => {
-      const nom = d.ProduitTaille?.ProduitVariante?.Produit?.nom || 'Produit supprimé';
+      const nom = d.produit_nom || d.ProduitTaille?.ProduitVariante?.Produit?.nom || 'Produit supprimé';
       if (!parProduit[nom]) parProduit[nom] = { produit: nom, quantite: 0, montant: 0 };
       parProduit[nom].quantite += d.quantite;
       parProduit[nom].montant += Number(d.sous_total);

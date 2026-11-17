@@ -21,18 +21,18 @@ async function supprimerPhotosCloudinary(urls) {
 }
 
 // Produits en rupture dans TOUTES leurs tailles depuis plus de 24 h : supprimés automatiquement (avec leurs photos).
-// Les produits déjà vendus sont conservés : leur historique de ventes (reçus, comptabilité) en dépend.
+// Les ventes passées gardent le nom, la taille et le prix du produit (copiés dans details_ventes) : reçus et comptabilité restent intacts.
 async function purgerProduitsEnRupture() {
   try {
     const [produits] = await sequelize.query(
       `SELECT p.id FROM produits p
          JOIN produit_variantes v ON v.produit_id = p.id
          JOIN produit_tailles t ON t.produit_variante_id = v.id
-        WHERE NOT EXISTS (
+        WHERE NOT EXISTS ( -- sécurité : on ne supprime pas un produit dont l'historique de vente n'a pas été copié
                 SELECT 1 FROM details_ventes d
                   JOIN produit_tailles t2 ON t2.id = d.produit_taille_id
                   JOIN produit_variantes v2 ON v2.id = t2.produit_variante_id
-                 WHERE v2.produit_id = p.id)
+                 WHERE v2.produit_id = p.id AND d.produit_nom IS NULL)
         GROUP BY p.id
        HAVING SUM(t.quantite) = 0 AND COUNT(t.id) > 0 AND MAX(t.updated_at) < DATE_SUB(NOW(), INTERVAL 1 DAY)`
     );
