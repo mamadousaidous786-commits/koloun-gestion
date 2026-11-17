@@ -3,10 +3,15 @@
 @tailwind utilities;
 
 @layer base {
-  html { -webkit-tap-highlight-color: transparent; }
+  /* La place de la barre de défilement est toujours réservée : la page ne se décale plus quand elle apparaît */
+  html { -webkit-tap-highlight-color: transparent; scrollbar-gutter: stable; }
   body {
     @apply bg-charbon-950 text-charbon-50 font-sans antialiased;
+    /* Chiffres à largeur fixe : les montants ne font plus bouger les colonnes en changeant */
+    font-variant-numeric: tabular-nums;
   }
+  /* Les photos ne dépassent jamais de leur cadre */
+  img { max-width: 100%; }
   /* En-têtes de tableaux : petits, en majuscules, discrets */
   thead th {
     @apply text-xs uppercase tracking-wider font-semibold whitespace-nowrap;
@@ -23,19 +28,19 @@
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 bg-gradient-to-b from-blue-500 to-blue-700 text-white
            font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm shadow-blue-600/30
-           hover:from-blue-600 hover:to-blue-800 active:scale-[0.98] transition
-           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
+           hover:from-blue-600 hover:to-blue-800 transition-colors
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200
            font-medium text-sm px-4 py-2.5 rounded-xl hover:bg-slate-50 hover:border-slate-300
-           active:scale-[0.98] transition;
+           transition-colors;
   }
 
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2 bg-white text-red-600 border border-red-200
-           font-medium text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 active:scale-[0.98] transition;
+           font-medium text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 transition-colors;
   }
 
   .input-champ {

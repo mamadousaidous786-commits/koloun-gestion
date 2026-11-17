@@ -11,6 +11,7 @@ import { dashboardAdmin } from '../services/statistiqueService';
 import { formaterGNF } from '../utils/format';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
+ChartJS.defaults.animation = false; // les graphiques s'affichent directement, sans mouvement
 
 export default function DashboardAdmin() {
   const [d, setD] = useState(null);
@@ -41,28 +42,30 @@ export default function DashboardAdmin() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <Link to="/dettes" className="block hover:-translate-y-0.5 transition">
+        <Link to="/dettes" className="block h-full rounded-2xl hover:ring-2 hover:ring-blue-200 transition-shadow">
           <Stat icone={<FiCreditCard />} titre="Dettes à récupérer" valeur={formaterGNF(d?.dettes_total_restant)}
             detail={d ? `${d.dettes_nombre} personne(s)${d.dettes_en_retard ? ` · ${d.dettes_en_retard} en retard` : ''}` : ''}
             teinte={d?.dettes_en_retard ? 'orange' : 'rouge'} />
         </Link>
-        <Link to="/commandes-speciales" className="block hover:-translate-y-0.5 transition">
+        <Link to="/commandes-speciales" className="block h-full rounded-2xl hover:ring-2 hover:ring-blue-200 transition-shadow">
           <Stat icone={<FiStar />} titre="Commandes spéciales en cours" valeur={d?.commandes_speciales_en_cours ?? '—'}
             detail={d?.commandes_speciales_arrivees ? `${d.commandes_speciales_arrivees} arrivée(s) à remettre` : ''} teinte="violet" />
         </Link>
-        <Link to="/produits" className="block hover:-translate-y-0.5 transition">
+        <Link to="/produits" className="block h-full rounded-2xl hover:ring-2 hover:ring-blue-200 transition-shadow">
           <Stat icone={<FiAlertTriangle />} titre="Ruptures / stock faible" valeur={d ? `${d.produits_en_rupture} / ${d.produits_stock_faible}` : '—'} teinte={d?.produits_en_rupture ? 'rouge' : 'orange'} />
         </Link>
-        <Link to="/notifications" className="block hover:-translate-y-0.5 transition">
+        <Link to="/notifications" className="block h-full rounded-2xl hover:ring-2 hover:ring-blue-200 transition-shadow">
           <Stat icone={<FiBell />} titre="Notifications non lues" valeur={d?.notifications_non_lues ?? '—'} teinte="violet" />
         </Link>
       </div>
 
       <div className="card max-w-md">
         <h2 className="font-semibold text-slate-900 mb-4">Ventes du mois par moyen de paiement</h2>
-        {graphique ? <Doughnut data={graphique} options={{ plugins: { legend: { position: 'bottom' } }, cutout: '65%' }} /> : (
-          <p className="text-slate-400 text-sm">Aucune vente ce mois-ci.</p>
-        )}
+        <div className="h-72 flex items-center justify-center">
+          {graphique ? <Doughnut data={graphique} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '65%' }} /> : (
+            <p className="text-slate-400 text-sm">{d ? 'Aucune vente ce mois-ci.' : 'Chargement…'}</p>
+          )}
+        </div>
       </div>
     </div>
   );

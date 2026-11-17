@@ -12,12 +12,13 @@ const TEINTES = {
 // Petite carte de chiffre clé
 export default function Stat({ icone, titre, valeur, detail, teinte = 'bleu' }) {
   return (
-    <div className="card flex items-center gap-4">
+    <div className="card flex items-center gap-4 h-full min-h-[5.75rem]">
       <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-lg shrink-0 ${TEINTES[teinte]}`}>{icone}</div>
       <div className="min-w-0">
-        <p className="text-xs text-slate-500">{titre}</p>
-        <p className="text-lg font-bold text-slate-900 truncate">{valeur}</p>
-        {detail && <p className="text-xs text-slate-500 mt-0.5">{detail}</p>}
+        <p className="text-xs text-slate-500 truncate" title={titre}>{titre}</p>
+        <p className="text-lg font-bold text-slate-900 truncate leading-7">{valeur}</p>
+        {/* Ligne toujours présente (même vide) : la carte garde la même hauteur avant et après le chargement */}
+        <p className="text-xs text-slate-500 mt-0.5 truncate h-4">{detail || ''}</p>
       </div>
     </div>
   );

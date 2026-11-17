@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { FiPlus, FiPrinter, FiSearch, FiStar, FiTrash2, FiImage, FiCalendar, FiChevronDown, FiChevronUp, FiLink } from 'react-icons/fi';
+import { FiPlus, FiPrinter, FiSearch, FiStar, FiTrash2, FiImage, FiCalendar, FiChevronDown, FiChevronUp, FiLink, FiShoppingBag, FiList } from 'react-icons/fi';
 import EnTete from '../components/EnTete';
 import Modal from '../components/Modal';
 import ChampClient from '../components/ChampClient';
 import BoutonsContact from '../components/BoutonsContact';
+import CatalogueSpecial from '../components/CatalogueSpecial';
 import {
   listerCommandesSpeciales, creerCommandeSpeciale, changerStatutCommandeSpeciale,
   ajouterPaiementCommandeSpeciale, supprimerCommandeSpeciale, recuCommandeSpeciale,
@@ -52,8 +53,26 @@ const formulaireVide = () => ({
   date_livraison_prevue: '', observation: '', photo: null,
 });
 
+// Deux onglets : les commandes des clients, et les modèles proposés dans l'application Koloun Boutique
+function Onglets({ onglet, setOnglet }) {
+  const bouton = (cle, icone, libelle) => (
+    <button type="button" onClick={() => setOnglet(cle)}
+      className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 h-10 rounded-lg text-sm font-semibold ${onglet === cle ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+      {icone} {libelle}
+    </button>
+  );
+  return (
+    <div className="flex gap-1 p-1 bg-slate-200/60 rounded-xl mb-5 w-full sm:w-fit">
+      {bouton('commandes', <FiList />, 'Commandes des clients')}
+      {bouton('catalogue', <FiShoppingBag />, 'Modèles en ligne (boutique)')}
+    </div>
+  );
+}
+
 export default function CommandesSpeciales() {
   const { estAdmin } = useAuth();
+  const [onglet, setOnglet] = useState(() => sessionStorage.getItem('kl_onglet_cs') || 'commandes');
+  useEffect(() => { sessionStorage.setItem('kl_onglet_cs', onglet); }, [onglet]);
   const [commandes, setCommandes] = useState([]);
   const [clients, setClients] = useState([]);
   const [filtre, setFiltre] = useState('');
@@ -161,11 +180,22 @@ export default function CommandesSpeciales() {
 
   const enRetard = (c) => c.date_livraison_prevue && !['livree', 'annulee'].includes(c.statut) && String(c.date_livraison_prevue).slice(0, 10) < aujourdhui();
 
+  if (onglet === 'catalogue') {
+    return (
+      <div>
+        <EnTete titre="Commandes spéciales" sousTitre="Les modèles que les clients peuvent commander depuis Koloun Boutique" icone={<FiStar />} />
+        <Onglets onglet={onglet} setOnglet={setOnglet} />
+        <CatalogueSpecial />
+      </div>
+    );
+  }
+
   return (
     <div>
       <EnTete titre="Commandes spéciales" sousTitre="Articles commandés pour vos clients, avec avance facultative" icone={<FiStar />}>
         <button onClick={() => setModalNouvelle(true)} className="btn-primary"><FiPlus /> Nouvelle commande</button>
       </EnTete>
+      <Onglets onglet={onglet} setOnglet={setOnglet} />
 
       <div className="flex flex-wrap items-center gap-2 mb-5">
         <div className="relative flex-1 min-w-[200px] max-w-sm">

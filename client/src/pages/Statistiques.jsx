@@ -10,6 +10,7 @@ import { rechercheIntelligente, graphiques } from '../services/statistiqueServic
 import { formaterGNF } from '../utils/format';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
+ChartJS.defaults.animation = false; // pas d'animation : les graphiques restent fixes
 ChartJS.defaults.font.family = 'Inter, system-ui, sans-serif';
 ChartJS.defaults.color = '#64748b';
 

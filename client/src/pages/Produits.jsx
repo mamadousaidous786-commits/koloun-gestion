@@ -218,14 +218,14 @@ export default function Produits() {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {produits.map((p) => (
-          <div key={p.id} className="card p-0 overflow-hidden">
+          <div key={p.id} className="card p-0 overflow-hidden flex flex-col">
             <div
-              className="w-full min-h-[9rem] bg-slate-50 flex items-center justify-center overflow-hidden relative cursor-pointer"
+              className="w-full aspect-square bg-slate-50 flex items-center justify-center overflow-hidden relative cursor-pointer shrink-0"
               onClick={() => setProduitDetail(p)}
               title="Voir toutes les photos et informations"
             >
               {imagePrincipale(p) ? (
-                <img loading="lazy" decoding="async" src={urlFichier(imagePrincipale(p))} alt={p.nom} className="w-full h-auto max-h-72 object-contain" />
+                <img loading="lazy" decoding="async" src={urlFichier(imagePrincipale(p))} alt={p.nom} className="w-full h-full object-contain" />
               ) : (
                 <FiImage className="text-charbon-100/30" size={32} />
               )}
@@ -269,7 +269,7 @@ export default function Produits() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(produitDetail.ProduitVariantes || []).map((v) => (
                 <div key={v.id} className="bg-charbon-800 rounded-lg overflow-hidden">
-                  <img loading="lazy" decoding="async" src={urlFichier(v.image, 900)} alt="" className="w-full h-auto max-h-96 object-contain bg-slate-50" />
+                  <img loading="lazy" decoding="async" src={urlFichier(v.image, 900)} alt="" className="w-full h-72 object-contain bg-slate-50" />
                   <div className="p-2 flex flex-wrap gap-1">
                     {(v.ProduitTailles || []).map((t) => (
                       <span key={t.id} className={`text-xs px-1.5 py-0.5 rounded ${t.quantite === 0 ? 'bg-red-500/15 text-red-500' : t.quantite <= t.seuil_alerte ? 'bg-yellow-500/15 text-yellow-600' : 'bg-charbon-900 text-charbon-100/70'}`}>
