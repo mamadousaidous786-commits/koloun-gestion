@@ -188,6 +188,7 @@ async function demarrerServeur() {
 
     // Garde la connexion à la base active (pas de 1ère requête lente)
     setInterval(() => sequelize.query('SELECT 1').catch(() => {}), 4 * 60 * 1000);
+    require('./utils/nettoyage').planifierNettoyage(); // supprime les livraisons de plus de 2 mois
 
     app.listen(PORT, () => {
       console.log(`🚀 Serveur Koloun Luxure démarré sur http://localhost:${PORT}`);
