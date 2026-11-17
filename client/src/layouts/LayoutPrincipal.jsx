@@ -76,6 +76,7 @@ export default function LayoutPrincipal() {
           <Section titre="Boutique">
             <Lien to="/tableau-de-bord" icone={<FiGrid />}>Tableau de bord</Lien>
             <Lien to="/ventes" icone={<FiShoppingCart />}>Ventes</Lien>
+            <Lien to="/livraisons" icone={<FiTruck />}>Livraisons du jour</Lien>
             <Lien to="/produits" icone={<FiBox />}>Produits</Lien>
             {estAdmin && <Lien to="/commandes-speciales" icone={<FiStar />}>Commandes spéciales</Lien>}
             <Lien to="/clients" icone={<FiUser />}>Clients</Lien>

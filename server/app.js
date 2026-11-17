@@ -16,6 +16,7 @@ const commandeRoutes = require('./routes/commandeRoutes');
 const groupeCommandeRoutes = require('./routes/groupeCommandeRoutes');
 const pushRoutes = require('./routes/pushRoutes');
 const suiviRoutes = require('./routes/suiviRoutes');
+const livraisonRoutes = require('./routes/livraisonRoutes');
 const statistiqueRoutes = require('./routes/statistiqueRoutes');
 const utilisateurRoutes = require('./routes/utilisateurRoutes');
 const fournisseurRoutes = require('./routes/fournisseurRoutes');
@@ -50,6 +51,7 @@ app.use('/api/recus', recuRoutes);
 app.use('/api/commandes', commandeRoutes);
 app.use('/api/groupes-commande', groupeCommandeRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/livraisons', livraisonRoutes);
 app.use('/api/suivi', suiviRoutes); // public : le client suit sa commande sans compte
 app.use('/api/statistiques', statistiqueRoutes);
 app.use('/api/utilisateurs', utilisateurRoutes);
@@ -137,6 +139,31 @@ async function migrerBase() {
     )`);
     // Suivi des commandes spéciales : chaque étape est indépendante (un échec n'empêche pas les autres)
     await migrerSuivi();
+    try {
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS livraisons (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        boutique_id INT NOT NULL,
+        numero VARCHAR(30) NOT NULL,
+        date_livraison DATE NOT NULL,
+        client_nom VARCHAR(150) NOT NULL,
+        client_telephone VARCHAR(50) NULL,
+        adresse VARCHAR(255) NULL,
+        article VARCHAR(200) NOT NULL,
+        taille VARCHAR(30) NULL,
+        image VARCHAR(500) NULL,
+        montant_livraison DECIMAL(12,2) DEFAULT 0,
+        montant_a_encaisser DECIMAL(12,2) DEFAULT 0,
+        livreur VARCHAR(100) NULL,
+        note VARCHAR(255) NULL,
+        statut ENUM('en_cours','livree','annulee') DEFAULT 'en_cours',
+        motif VARCHAR(255) NULL,
+        cree_par INT NULL,
+        valide_par INT NULL,
+        date_validation DATETIME NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_livraisons_jour (boutique_id, date_livraison)
+      )`);
+    } catch (e) { console.error('⚠️ Table livraisons :', e.message); }
     const [colonne] = await sequelize.query(
       "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes' AND COLUMN_NAME = 'groupe_id'",
       { type: sequelize.QueryTypes.SELECT }
