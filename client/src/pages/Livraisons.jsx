@@ -9,6 +9,7 @@ import { listerLivraisons, creerLivraison, modifierLivraison, changerStatutLivra
 import { useAuth } from '../context/AuthContext';
 import { urlFichier } from '../utils/fichiers';
 import { formaterGNF, aujourdhui } from '../utils/format';
+import { compresserImage } from '../utils/images';
 
 const STATUTS = {
   en_cours: { label: 'À livrer', classe: 'bg-amber-50 text-amber-700 ring-amber-200' },
@@ -64,6 +65,16 @@ export default function Livraisons() {
     setModal(true);
   };
 
+  // Plusieurs photos d'un coup : chaque photo devient un article (on ajoute ensuite la taille de chacun)
+  const ajouterPhotos = (fichiers) => {
+    const nouvelles = Array.from(fichiers || []).map((photo) => ({ ...ligneVide(), photo }));
+    if (nouvelles.length === 0) return;
+    setF((cur) => {
+      const garde = cur.lignes.filter((l) => l.designation || l.taille || l.photo || l.image); // retire les lignes vides
+      return { ...cur, lignes: [...garde, ...nouvelles] };
+    });
+  };
+
   const majLigne = (i, patch) => setF((cur) => ({ ...cur, lignes: cur.lignes.map((l, k) => (k === i ? { ...l, ...patch } : l)) }));
 
   const soumettre = async (e) => {
@@ -73,7 +84,8 @@ export default function Livraisons() {
       const fd = new FormData();
       Object.entries(f).forEach(([k, v]) => { if (k !== 'lignes') fd.append(k, v ?? ''); });
       fd.append('articles', JSON.stringify(f.lignes.map((l) => ({ designation: l.designation, taille: l.taille, image: l.photo ? null : l.image }))));
-      f.lignes.forEach((l, i) => { if (l.photo) fd.append(`image_${i}`, l.photo); });
+      const photos = await Promise.all(f.lignes.map((l) => (l.photo ? compresserImage(l.photo) : null)));
+      photos.forEach((ph, i) => { if (ph) fd.append(`image_${i}`, ph); });
       if (edition) await modifierLivraison(edition.id, fd); else await creerLivraison(fd);
       toast.success(edition ? 'Livraison modifiée.' : 'Livraison ajoutée.');
       setModal(false);
@@ -182,6 +194,9 @@ export default function Livraisons() {
             <div><label className="etiquette">Adresse / quartier</label><input className="input-champ" placeholder="Ex : Kipé, près de la station" value={f.adresse} onChange={(e) => setF({ ...f, adresse: e.target.value })} /></div>
             <div>
               <label className="etiquette">Articles à livrer (nom, taille et photo facultatifs)</label>
+              <label className="btn-secondary !py-2 text-sm cursor-pointer mb-3 inline-flex items-center gap-2"><FiImage /> Ajouter des photos (plusieurs d'un coup)
+                <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { ajouterPhotos(e.target.files); e.target.value = ''; }} />
+              </label>
               <div className="space-y-3">
                 {f.lignes.map((l, i) => (
                   <div key={i} className="rounded-xl border border-slate-200 p-3">
