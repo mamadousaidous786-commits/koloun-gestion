@@ -15,13 +15,17 @@ const TITRES = {
   rupture_stock: '🚫 Rupture de stock',
   stock_faible: '⚠️ Stock faible',
   commande_speciale_arrivee: '📦 Commande spéciale arrivée',
+  livraison_nouvelle: '🚚 Nouvelle livraison',
+  livraison_livree: '✅ Livraison effectuée',
+  livraison_annulee: '❌ Livraison annulée',
 };
 
 // Envoie une alerte aux appareils de la boutique (par défaut : aux administrateurs)
-async function envoyerAlerte(boutique_id, { titre, corps, url = '/notifications', tag, urgent = false }, roles = ['admin']) {
+async function envoyerAlerte(boutique_id, { titre, corps, url = '/notifications', tag, urgent = false }, roles = ['admin'], exclureUtilisateur = null) {
   if (!actif) return;
   try {
-    const abonnes = await PushAbonnement.findAll({ where: { boutique_id, role: roles } });
+    let abonnes = await PushAbonnement.findAll({ where: { boutique_id, role: roles } });
+    if (exclureUtilisateur) abonnes = abonnes.filter((a) => a.utilisateur_id !== exclureUtilisateur); // pas d'alerte pour celui qui vient d'agir
     const charge = JSON.stringify({ titre, corps, url, tag, urgent });
     await Promise.all(abonnes.map(async (a) => {
       try {
@@ -38,12 +42,16 @@ async function envoyerAlerte(boutique_id, { titre, corps, url = '/notifications'
 // Toute notification créée dans l'application (rupture, stock faible, commande spéciale arrivée…)
 // déclenche automatiquement une alerte sur les téléphones abonnés, même application fermée.
 function brancherNotifications(Notification) {
-  const envoyer = (n) => envoyerAlerte(n.boutique_id, {
-    titre: TITRES[n.type] || 'Koloun Luxure',
-    corps: n.message,
-    tag: `${n.type}-${n.id || Date.now()}`,
-    urgent: n.type === 'rupture_stock',
-  });
+  const envoyer = (n) => {
+    const livraison = n.type.startsWith('livraison_');
+    return envoyerAlerte(n.boutique_id, {
+      titre: TITRES[n.type] || 'Koloun Luxure',
+      corps: n.message,
+      url: livraison ? '/livraisons' : '/notifications',
+      tag: `${n.type}-${n.id || Date.now()}`,
+      urgent: n.type === 'rupture_stock',
+    }, livraison ? ['admin', 'utilisateur'] : ['admin'], livraison ? n.utilisateur_id : null);
+  };
   const apresValidation = (options, fn) => (options && options.transaction ? options.transaction.afterCommit(fn) : fn());
 
   Notification.addHook('afterCreate', (n, options) => apresValidation(options, () => envoyer(n)));
