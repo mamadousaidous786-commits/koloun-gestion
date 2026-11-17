@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { FiTruck, FiPlus, FiImage, FiPhone, FiMapPin, FiCheck, FiX, FiTrash2, FiRotateCcw, FiEdit2 } from 'react-icons/fi';
 import EnTete from '../components/EnTete';
 import Modal from '../components/Modal';
 import BoutonsContact from '../components/BoutonsContact';
+import VisionneusePhotos from '../components/VisionneusePhotos';
 import { listerLivraisons, creerLivraison, modifierLivraison, changerStatutLivraison, supprimerLivraison } from '../services/livraisonService';
 import { useAuth } from '../context/AuthContext';
 import { urlFichier } from '../utils/fichiers';
@@ -15,7 +16,26 @@ const STATUTS = {
   annulee: { label: 'Annulée', classe: 'bg-slate-100 text-slate-500 ring-slate-200' },
 };
 
-const vide = () => ({ client_nom: '', client_telephone: '', adresse: '', article: '', taille: '', montant_livraison: '', montant_a_encaisser: '', livreur: '', note: '', date_livraison: aujourdhui(), photo: null });
+const ligneVide = () => ({ designation: '', taille: '', photo: null, image: null });
+const vide = () => ({ client_nom: '', client_telephone: '', adresse: '', lignes: [ligneVide()], montant_livraison: '', montant_a_encaisser: '', livreur: '', note: '', date_livraison: aujourdhui(), photo: null });
+
+// Photos de la livraison : un clic ouvre l'image en grand (avec la taille de chaque article)
+function Miniatures({ l, ouvrir }) {
+  const avecPhoto = l.articles.filter((a) => a.image);
+  const photos = avecPhoto.map((a) => ({ image: a.image, legende: `${a.designation}${a.taille ? ` — taille ${a.taille}` : ''}` }));
+  if (photos.length === 0) return <div className="w-24 h-24 rounded-xl bg-slate-100 shrink-0 flex items-center justify-center"><FiImage className="text-slate-300" size={24} /></div>;
+  const montrees = photos.slice(0, 4);
+  return (
+    <div className={`shrink-0 grid gap-1 ${photos.length === 1 ? 'grid-cols-1 w-24' : 'grid-cols-2 w-24'}`}>
+      {montrees.map((p, k) => (
+        <button key={k} type="button" onClick={() => ouvrir(photos, k)} className={`relative rounded-lg bg-slate-100 overflow-hidden ${photos.length === 1 ? 'h-24' : 'h-11'}`} title="Voir la photo">
+          <img loading="lazy" decoding="async" src={urlFichier(p.image, 300)} alt={p.legende} className="w-full h-full object-cover" />
+          {k === 3 && photos.length > 4 && <span className="absolute inset-0 bg-black/55 text-white text-xs font-semibold flex items-center justify-center">+{photos.length - 3}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function Livraisons() {
   const { estAdmin } = useAuth();
@@ -27,7 +47,7 @@ export default function Livraisons() {
   const [f, setF] = useState(vide());
   const [enregistrement, setEnregistrement] = useState(false);
   const [annulation, setAnnulation] = useState(null); // { livraison, motif }
-  const inputPhoto = useRef(null);
+  const [visionneuse, setVisionneuse] = useState(null); // { photos, depart }
 
   const charger = useCallback(() => {
     listerLivraisons(jour).then(setListe).catch(() => toast.error('Impossible de charger les livraisons.')).finally(() => setChargement(false));
@@ -37,19 +57,23 @@ export default function Livraisons() {
   const ouvrirNouvelle = () => { setEdition(null); setF({ ...vide(), date_livraison: jour }); setModal(true); };
   const ouvrirEdition = (l) => {
     setEdition(l);
-    setF({ client_nom: l.client_nom, client_telephone: l.client_telephone || '', adresse: l.adresse || '', article: l.article, taille: l.taille || '',
+    setF({ client_nom: l.client_nom, client_telephone: l.client_telephone || '', adresse: l.adresse || '',
+      lignes: (l.articles || []).map((a) => ({ designation: a.designation, taille: a.taille || '', photo: null, image: a.image || null })),
       montant_livraison: Number(l.montant_livraison) || '', montant_a_encaisser: Number(l.montant_a_encaisser) || '', livreur: l.livreur || '', note: l.note || '',
       date_livraison: String(l.date_livraison).slice(0, 10), photo: null });
     setModal(true);
   };
+
+  const majLigne = (i, patch) => setF((cur) => ({ ...cur, lignes: cur.lignes.map((l, k) => (k === i ? { ...l, ...patch } : l)) }));
 
   const soumettre = async (e) => {
     e.preventDefault();
     setEnregistrement(true);
     try {
       const fd = new FormData();
-      Object.entries(f).forEach(([k, v]) => { if (k !== 'photo') fd.append(k, v ?? ''); });
-      if (f.photo) fd.append('image', f.photo);
+      Object.entries(f).forEach(([k, v]) => { if (k !== 'lignes') fd.append(k, v ?? ''); });
+      fd.append('articles', JSON.stringify(f.lignes.map((l) => ({ designation: l.designation, taille: l.taille, image: l.photo ? null : l.image }))));
+      f.lignes.forEach((l, i) => { if (l.photo) fd.append(`image_${i}`, l.photo); });
       if (edition) await modifierLivraison(edition.id, fd); else await creerLivraison(fd);
       toast.success(edition ? 'Livraison modifiée.' : 'Livraison ajoutée.');
       setModal(false);
@@ -101,14 +125,15 @@ export default function Livraisons() {
           {liste.map((l) => (
             <div key={l.id} className={`card ${l.statut !== 'en_cours' ? 'opacity-90' : ''}`}>
               <div className="flex gap-3">
-                <div className="w-24 h-24 rounded-xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
-                  {l.image ? <img loading="lazy" decoding="async" src={urlFichier(l.image, 300)} alt="" className="w-full h-full object-contain" /> : <FiImage className="text-slate-300" size={24} />}
-                </div>
+                <Miniatures l={l} ouvrir={(photos, depart) => setVisionneuse({ photos, depart })} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-[11px] font-mono text-slate-400">{l.numero}</p>
-                      <p className="font-semibold text-slate-900 truncate">{l.article}{l.taille ? ` · Taille ${l.taille}` : ''}</p>
+                      <p className="font-semibold text-slate-900">{l.articles.length > 1 ? `${l.articles.length} articles` : l.articles[0].designation}</p>
+                      {l.articles.length > 1 ? (
+                        <ul className="text-xs text-slate-600 mt-0.5">{l.articles.map((a) => <li key={a.id}>• {a.designation}{a.taille ? ` — taille ${a.taille}` : ''}</li>)}</ul>
+                      ) : l.articles[0].taille && <p className="text-xs text-slate-600">Taille {l.articles[0].taille}</p>}
                     </div>
                     <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ring-1 shrink-0 ${STATUTS[l.statut].classe}`}>{STATUTS[l.statut].label}</span>
                   </div>
@@ -155,17 +180,26 @@ export default function Livraisons() {
               <div><label className="etiquette">Téléphone</label><input className="input-champ" inputMode="tel" value={f.client_telephone} onChange={(e) => setF({ ...f, client_telephone: e.target.value })} /></div>
             </div>
             <div><label className="etiquette">Adresse / quartier</label><input className="input-champ" placeholder="Ex : Kipé, près de la station" value={f.adresse} onChange={(e) => setF({ ...f, adresse: e.target.value })} /></div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-2"><label className="etiquette">Article à livrer</label><input required className="input-champ" value={f.article} onChange={(e) => setF({ ...f, article: e.target.value })} /></div>
-              <div><label className="etiquette">Taille</label><input className="input-champ" placeholder="M, 42…" value={f.taille} onChange={(e) => setF({ ...f, taille: e.target.value })} /></div>
-            </div>
             <div>
-              <label className="etiquette">Photo (facultatif)</label>
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => inputPhoto.current.click()} className="btn-secondary !py-2 text-xs"><FiImage /> {f.photo ? 'Changer la photo' : 'Ajouter une photo'}</button>
-                {f.photo && <span className="text-xs text-slate-500 truncate">{f.photo.name}</span>}
-                <input ref={inputPhoto} type="file" accept="image/*" className="hidden" onChange={(e) => setF({ ...f, photo: e.target.files[0] || null })} />
+              <label className="etiquette">Articles à livrer (une photo et une taille par article)</label>
+              <div className="space-y-3">
+                {f.lignes.map((l, i) => (
+                  <div key={i} className="rounded-xl border border-slate-200 p-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <input required className="input-champ col-span-2" placeholder="Article (ex : Robe bleue)" value={l.designation} onChange={(e) => majLigne(i, { designation: e.target.value })} />
+                      <input className="input-champ" placeholder="Taille" value={l.taille} onChange={(e) => majLigne(i, { taille: e.target.value })} />
+                    </div>
+                    <div className="flex items-center gap-3 mt-2">
+                      {(l.photo || l.image) && <img alt="" className="w-12 h-12 rounded-lg object-cover bg-slate-100" src={l.photo ? URL.createObjectURL(l.photo) : urlFichier(l.image, 150)} />}
+                      <label className="btn-secondary !py-2 text-xs cursor-pointer"><FiImage /> {l.photo || l.image ? 'Changer la photo' : 'Ajouter une photo'}
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => majLigne(i, { photo: e.target.files[0] || null })} />
+                      </label>
+                      {f.lignes.length > 1 && <button type="button" onClick={() => setF({ ...f, lignes: f.lignes.filter((_, k) => k !== i) })} className="ml-auto text-slate-400 hover:text-red-500" title="Retirer cet article"><FiTrash2 size={16} /></button>}
+                    </div>
+                  </div>
+                ))}
               </div>
+              <button type="button" onClick={() => setF({ ...f, lignes: [...f.lignes, ligneVide()] })} className="mt-2 text-sm font-medium text-blue-700 hover:underline inline-flex items-center gap-1"><FiPlus size={14} /> Ajouter un autre article</button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label className="etiquette">Montant de la livraison (frais)</label><input type="number" min="0" className="input-champ" value={f.montant_livraison} onChange={(e) => setF({ ...f, montant_livraison: e.target.value })} /></div>
@@ -183,6 +217,8 @@ export default function Livraisons() {
           </form>
         </Modal>
       )}
+
+      {visionneuse && <VisionneusePhotos photos={visionneuse.photos} depart={visionneuse.depart} onClose={() => setVisionneuse(null)} />}
 
       {annulation && (
         <Modal titre={`Annuler ${annulation.livraison.numero}`} onClose={() => setAnnulation(null)}>

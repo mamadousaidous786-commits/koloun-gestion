@@ -163,6 +163,15 @@ async function migrerBase() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_livraisons_jour (boutique_id, date_livraison)
       )`);
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS livraison_articles (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        livraison_id INT NOT NULL,
+        designation VARCHAR(200) NOT NULL,
+        taille VARCHAR(30) NULL,
+        image VARCHAR(500) NULL,
+        INDEX idx_livraison_articles (livraison_id),
+        FOREIGN KEY (livraison_id) REFERENCES livraisons(id) ON DELETE CASCADE
+      )`);
     } catch (e) { console.error('⚠️ Table livraisons :', e.message); }
     const [colonne] = await sequelize.query(
       "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes' AND COLUMN_NAME = 'groupe_id'",

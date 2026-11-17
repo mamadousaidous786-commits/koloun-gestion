@@ -27,10 +27,13 @@ const ClotureCaisse = require('./ClotureCaisse');
 const GroupeCommande = require('./GroupeCommande');
 const PushAbonnement = require('./PushAbonnement');
 const Livraison = require('./Livraison');
+const LivraisonArticle = require('./LivraisonArticle');
 const { brancherNotifications } = require('../utils/push');
 
 brancherNotifications(Notification);
 
+Livraison.hasMany(LivraisonArticle, { foreignKey: 'livraison_id', as: 'articles', onDelete: 'CASCADE' });
+LivraisonArticle.belongsTo(Livraison, { foreignKey: 'livraison_id' });
 Livraison.belongsTo(Utilisateur, { foreignKey: 'cree_par', as: 'createur' });
 Livraison.belongsTo(Utilisateur, { foreignKey: 'valide_par', as: 'validateur' });
 
@@ -167,4 +170,5 @@ module.exports = {
   GroupeCommande,
   PushAbonnement,
   Livraison,
+  LivraisonArticle,
 };

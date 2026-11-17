@@ -11,10 +11,14 @@ const identifiantCloudinary = (url) => {
 async function purgerLivraisons() {
   try {
     const [anciennes] = await sequelize.query(
-      `SELECT id, image FROM livraisons WHERE date_livraison < DATE_SUB(CURDATE(), INTERVAL ${MOIS_CONSERVATION} MONTH)`
+      `SELECT l.id, l.image AS image FROM livraisons l WHERE l.date_livraison < DATE_SUB(CURDATE(), INTERVAL ${MOIS_CONSERVATION} MONTH)
+       UNION ALL
+       SELECT a.livraison_id, a.image FROM livraison_articles a JOIN livraisons l ON l.id = a.livraison_id
+        WHERE l.date_livraison < DATE_SUB(CURDATE(), INTERVAL ${MOIS_CONSERVATION} MONTH)`
     );
-    if (!anciennes.length) return 0;
-
+    const [comptage] = await sequelize.query(`SELECT COUNT(*) AS n FROM livraisons WHERE date_livraison < DATE_SUB(CURDATE(), INTERVAL ${MOIS_CONSERVATION} MONTH)`);
+    const n = Number(comptage[0].n);
+    if (!n) return 0;
     await sequelize.query(
       `DELETE FROM livraisons WHERE date_livraison < DATE_SUB(CURDATE(), INTERVAL ${MOIS_CONSERVATION} MONTH)`
     );
@@ -27,11 +31,11 @@ async function purgerLivraisons() {
         api_key: process.env.CLOUDINARY_API_KEY,
         api_secret: process.env.CLOUDINARY_API_SECRET,
       });
-      const ids = anciennes.map((a) => identifiantCloudinary(a.image)).filter(Boolean);
+      const ids = [...new Set(anciennes.map((a) => identifiantCloudinary(a.image)).filter(Boolean))];
       for (const id of ids) await cloudinary.uploader.destroy(id).catch(() => {});
     }
-    console.log(`🧹 ${anciennes.length} livraison(s) de plus de ${MOIS_CONSERVATION} mois supprimée(s).`);
-    return anciennes.length;
+    console.log(`🧹 ${n} livraison(s) de plus de ${MOIS_CONSERVATION} mois supprimée(s).`);
+    return n;
   } catch (e) {
     console.error('⚠️ Nettoyage des livraisons :', e.message);
     return 0;

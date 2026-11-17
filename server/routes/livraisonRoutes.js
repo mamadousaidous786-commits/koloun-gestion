@@ -6,8 +6,8 @@ const upload = require('../middleware/upload');
 
 router.use(verifierToken); // visible et utilisable par tous les utilisateurs
 router.get('/', ctrl.lister);
-router.post('/', upload.single('image'), ctrl.creer);
-router.put('/:id', upload.single('image'), ctrl.modifier);
+router.post('/', upload.array(), ctrl.creer);
+router.put('/:id', upload.array(), ctrl.modifier);
 router.put('/:id/statut', ctrl.changerStatut);
 router.delete('/:id', autoriserRoles('admin'), ctrl.supprimer);
 
