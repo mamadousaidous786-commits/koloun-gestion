@@ -16,6 +16,7 @@ const commandeRoutes = require('./routes/commandeRoutes');
 const groupeCommandeRoutes = require('./routes/groupeCommandeRoutes');
 const pushRoutes = require('./routes/pushRoutes');
 const suiviRoutes = require('./routes/suiviRoutes');
+const livraisonRoutes = require('./routes/livraisonRoutes');
 const statistiqueRoutes = require('./routes/statistiqueRoutes');
 const utilisateurRoutes = require('./routes/utilisateurRoutes');
 const fournisseurRoutes = require('./routes/fournisseurRoutes');
@@ -52,6 +53,7 @@ app.use('/api/recus', recuRoutes);
 app.use('/api/commandes', commandeRoutes);
 app.use('/api/groupes-commande', groupeCommandeRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/livraisons', livraisonRoutes);
 app.use('/api/suivi', suiviRoutes); // public : le client suit sa commande sans compte
 app.use('/api/boutique', boutiqueRoutes); // Koloun Boutique : public + espace vendeur (avant la route '/api' des fournisseurs)
 app.use('/api/statistiques', statistiqueRoutes);
@@ -114,6 +116,43 @@ async function migrerSuivi() {
     WHERE NOT EXISTS (SELECT 1 FROM suivi_commandes_speciales s WHERE s.commande_speciale_id = c.id)`));
 }
 
+async function migrerHistoriqueVentes() {
+  const etape = async (nom, fn) => { try { await fn(); } catch (e) { console.error(`⚠️ Historique des ventes (${nom}) :`, e.message); } };
+  const q = (sql) => sequelize.query(sql);
+  const colonne = async (nom) => {
+    const [r] = await sequelize.query(
+      "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'details_ventes' AND COLUMN_NAME = :nom",
+      { replacements: { nom }, type: sequelize.QueryTypes.SELECT }
+    );
+    return Number(r.n) > 0;
+  };
+  await etape('colonnes', async () => {
+    if (!(await colonne('produit_nom'))) await q('ALTER TABLE details_ventes ADD COLUMN produit_nom VARCHAR(200) NULL');
+    if (!(await colonne('taille_nom'))) await q('ALTER TABLE details_ventes ADD COLUMN taille_nom VARCHAR(50) NULL');
+    if (!(await colonne('prix_normal'))) await q('ALTER TABLE details_ventes ADD COLUMN prix_normal DECIMAL(12,2) NULL');
+  });
+  await etape('copie des ventes existantes', () => q(`UPDATE details_ventes d
+      JOIN produit_tailles pt ON pt.id = d.produit_taille_id
+      JOIN produit_variantes pv ON pv.id = pt.produit_variante_id
+      JOIN produits p ON p.id = pv.produit_id
+      SET d.produit_nom = p.nom, d.taille_nom = pt.taille, d.prix_normal = p.prix_normal
+      WHERE d.produit_nom IS NULL`));
+  await etape('lien produit', async () => {
+    const lignesFk = await sequelize.query(
+      `SELECT k.CONSTRAINT_NAME AS nom, r.DELETE_RULE AS regle
+         FROM information_schema.KEY_COLUMN_USAGE k
+         JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_NAME = k.CONSTRAINT_NAME AND r.CONSTRAINT_SCHEMA = k.TABLE_SCHEMA
+        WHERE k.TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = 'details_ventes' AND k.COLUMN_NAME = 'produit_taille_id' AND k.REFERENCED_TABLE_NAME = 'produit_tailles'`,
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    const fk = lignesFk[0];
+    if (fk && fk.regle === 'SET NULL') return;
+    if (fk) await q(`ALTER TABLE details_ventes DROP FOREIGN KEY \`${fk.nom}\``);
+    await q('ALTER TABLE details_ventes MODIFY COLUMN produit_taille_id INT NULL');
+    await q('ALTER TABLE details_ventes ADD CONSTRAINT fk_details_taille FOREIGN KEY (produit_taille_id) REFERENCES produit_tailles(id) ON DELETE SET NULL');
+  });
+}
+
 async function migrerBase() {
   try {
     await sequelize.query(`CREATE TABLE IF NOT EXISTS groupes_commande (
@@ -140,7 +179,42 @@ async function migrerBase() {
     )`);
     // Suivi des commandes spéciales : chaque étape est indépendante (un échec n'empêche pas les autres)
     await migrerSuivi();
+    await migrerHistoriqueVentes();
     await migrerBoutique(sequelize); // tables de Koloun Boutique
+    try {
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS livraisons (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        boutique_id INT NOT NULL,
+        numero VARCHAR(30) NOT NULL,
+        date_livraison DATE NOT NULL,
+        client_nom VARCHAR(150) NOT NULL,
+        client_telephone VARCHAR(50) NULL,
+        adresse VARCHAR(255) NULL,
+        article VARCHAR(200) NOT NULL,
+        taille VARCHAR(30) NULL,
+        image VARCHAR(500) NULL,
+        montant_livraison DECIMAL(12,2) DEFAULT 0,
+        montant_a_encaisser DECIMAL(12,2) DEFAULT 0,
+        livreur VARCHAR(100) NULL,
+        note VARCHAR(255) NULL,
+        statut ENUM('en_cours','livree','annulee') DEFAULT 'en_cours',
+        motif VARCHAR(255) NULL,
+        cree_par INT NULL,
+        valide_par INT NULL,
+        date_validation DATETIME NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_livraisons_jour (boutique_id, date_livraison)
+      )`);
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS livraison_articles (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        livraison_id INT NOT NULL,
+        designation VARCHAR(200) NOT NULL,
+        taille VARCHAR(30) NULL,
+        image VARCHAR(500) NULL,
+        INDEX idx_livraison_articles (livraison_id),
+        FOREIGN KEY (livraison_id) REFERENCES livraisons(id) ON DELETE CASCADE
+      )`);
+    } catch (e) { console.error('⚠️ Table livraisons :', e.message); }
     const [colonne] = await sequelize.query(
       "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'commandes' AND COLUMN_NAME = 'groupe_id'",
       { type: sequelize.QueryTypes.SELECT }
@@ -165,6 +239,7 @@ async function demarrerServeur() {
 
     // Garde la connexion à la base active (pas de 1ère requête lente)
     setInterval(() => sequelize.query('SELECT 1').catch(() => {}), 4 * 60 * 1000);
+    require('./utils/nettoyage').planifierNettoyage(); // supprime les livraisons de plus de 2 mois
 
     app.listen(PORT, () => {
       console.log(`🚀 Serveur Koloun Luxure démarré sur http://localhost:${PORT}`);
