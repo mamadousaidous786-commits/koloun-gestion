@@ -36,6 +36,9 @@ router.post('/notifications/desabonner', notif.desabonner);
 router.post('/auth/inscription', compte.inscription);
 router.post('/auth/connexion', compte.connexion);
 router.post('/auth/google', compte.google);
+router.post('/auth/google/preparer', compte.preparerGoogle);       // iPhone : application installée
+router.post('/auth/google/retour', compte.retourGoogle);           // Google renvoie ici (à déclarer dans Google Cloud)
+router.get('/auth/google/attente/:nonce', compte.attenteGoogle);
 router.get('/compte', compte.exigerCompte, compte.monCompte);
 router.put('/compte', compte.exigerCompte, compte.modifierCompte);
 router.post('/compte/commandes/:code/annuler', compte.exigerCompte, ctrl.annulerParClient);

@@ -169,28 +169,90 @@ function verifierJetonGoogle(credential) {
   });
 }
 
-// POST /api/boutique/auth/google { credential }
+// Connexion / inscription avec un jeton Google déjà vérifié → { type, token, compte }
+async function connecterParGoogle(d) {
+  if (d.aud !== process.env.GOOGLE_CLIENT_ID) throw erreur(401, 'Connexion Google refusée.');
+  if (String(d.email_verified) !== 'true') throw erreur(401, 'Votre email Google doit être vérifié.');
+  const email = String(d.email).toLowerCase();
+
+  let [compte] = await sql('SELECT * FROM comptes_clients WHERE boutique_id = ? AND (google_id = ? OR email = ?)', [BOUTIQUE_ID, d.sub, email]);
+  if (compte) {
+    if (!compte.actif) throw erreur(403, 'Ce compte a été désactivé. Contactez la boutique.');
+    await exec('UPDATE comptes_clients SET google_id = ?, photo = COALESCE(photo, ?), derniere_connexion = NOW() WHERE id = ?', [d.sub, d.picture || null, compte.id]);
+  } else {
+    const [id] = await sequelize.query(
+      'INSERT INTO comptes_clients (boutique_id, nom, email, google_id, photo, derniere_connexion) VALUES (?,?,?,?,?, NOW())',
+      { type: sequelize.QueryTypes.INSERT, replacements: [BOUTIQUE_ID, String(d.name || email.split('@')[0]).slice(0, 150), email, d.sub, d.picture || null] });
+    [compte] = await sql('SELECT * FROM comptes_clients WHERE id = ?', [id]);
+  }
+  if (!compte.client_id) await lierClientGestion(compte); // fiche dans « Clients » de Koloun Gestion, comme une inscription classique
+  [compte] = await sql('SELECT * FROM comptes_clients WHERE id = ?', [compte.id]);
+  return { type: 'client', token: jetonClient(compte), compte: publique(compte) };
+}
+
+// POST /api/boutique/auth/google { credential }  — fenêtre Google (Android, ordinateur, navigateur)
 exports.google = async (req, res) => {
   try {
     if (!process.env.GOOGLE_CLIENT_ID) throw erreur(503, "La connexion Google n'est pas encore activée.");
     const d = await verifierJetonGoogle(String(req.body.credential || ''));
-    if (d.aud !== process.env.GOOGLE_CLIENT_ID) throw erreur(401, 'Connexion Google refusée.');
-    if (String(d.email_verified) !== 'true') throw erreur(401, 'Votre email Google doit être vérifié.');
-    const email = String(d.email).toLowerCase();
-
-    let [compte] = await sql('SELECT * FROM comptes_clients WHERE boutique_id = ? AND (google_id = ? OR email = ?)', [BOUTIQUE_ID, d.sub, email]);
-    if (compte) {
-      if (!compte.actif) throw erreur(403, 'Ce compte a été désactivé. Contactez la boutique.');
-      await exec('UPDATE comptes_clients SET google_id = ?, photo = COALESCE(photo, ?), derniere_connexion = NOW() WHERE id = ?', [d.sub, d.picture || null, compte.id]);
-    } else {
-      const [id] = await sequelize.query(
-        'INSERT INTO comptes_clients (boutique_id, nom, email, google_id, photo, derniere_connexion) VALUES (?,?,?,?,?, NOW())',
-        { type: sequelize.QueryTypes.INSERT, replacements: [BOUTIQUE_ID, String(d.name || email.split('@')[0]).slice(0, 150), email, d.sub, d.picture || null] });
-      [compte] = await sql('SELECT * FROM comptes_clients WHERE id = ?', [id]);
-    }
-    [compte] = await sql('SELECT * FROM comptes_clients WHERE id = ?', [compte.id]);
-    res.json({ type: 'client', token: jetonClient(compte), compte: publique(compte) });
+    res.json(await connecterParGoogle(d));
   } catch (e) { repondreErreur(res, e, 'La connexion Google a échoué.'); }
+};
+
+// ---------- iPhone (application installée) : connexion Google par redirection ----------
+// Sur iPhone, la fenêtre Google ne fonctionne qu'une fois dans une application installée.
+// 1) l'application prépare un code secret (nonce) et l'adresse où revenir ;
+// 2) Google renvoie l'identité au serveur (POST credential), le jeton contient ce code ;
+// 3) le serveur garde la connexion sous ce code, l'application la récupère (une seule fois).
+const attentesGoogle = new Map(); // nonce → { origine, t, resultat? }
+const DUREE_ATTENTE = 15 * 60 * 1000;
+function nettoyerAttentes() {
+  const limite = Date.now() - DUREE_ATTENTE;
+  for (const [k, v] of attentesGoogle) if (v.t < limite) attentesGoogle.delete(k);
+}
+const nonceValide = (n) => typeof n === 'string' && /^[A-Za-z0-9_-]{24,100}$/.test(n);
+
+// POST /api/boutique/auth/google/preparer { nonce, origine }
+exports.preparerGoogle = (req, res) => {
+  nettoyerAttentes();
+  const { nonce, origine } = req.body || {};
+  let url;
+  try { url = new URL(String(origine)); } catch { url = null; }
+  const origineOk = url && (url.protocol === 'https:' || url.hostname === 'localhost' || url.hostname === '127.0.0.1');
+  if (!nonceValide(nonce) || !origineOk) return res.status(400).json({ message: 'Demande invalide.' });
+  if (attentesGoogle.size > 5000) return res.status(429).json({ message: 'Réessayez dans quelques minutes.' });
+  if (!attentesGoogle.has(nonce)) attentesGoogle.set(nonce, { origine: url.origin, t: Date.now() });
+  res.json({ ok: true });
+};
+
+// POST /api/boutique/auth/google/retour  (formulaire envoyé par Google : credential)
+exports.retourGoogle = async (req, res) => {
+  let attente = null;
+  try {
+    if (!process.env.GOOGLE_CLIENT_ID) throw erreur(503, "La connexion Google n'est pas encore activée.");
+    // Protection Google (double envoi) : si le cookie est présent, il doit correspondre
+    const cookieCsrf = (String(req.headers.cookie || '').match(/(?:^|;\s*)g_csrf_token=([^;]+)/) || [])[1];
+    if (cookieCsrf && req.body.g_csrf_token && cookieCsrf !== req.body.g_csrf_token) throw erreur(400, 'Connexion Google refusée.');
+    const d = await verifierJetonGoogle(String(req.body.credential || ''));
+    attente = d.nonce && attentesGoogle.get(d.nonce);
+    if (!attente) throw erreur(400, 'La connexion a expiré. Réessayez.');
+    attente.resultat = await connecterParGoogle(d);
+    attente.t = Date.now();
+    res.redirect(303, `${attente.origine}/connexion-google?n=${encodeURIComponent(d.nonce)}`);
+  } catch (e) {
+    const message = e.code && e.code < 500 ? e.message : 'La connexion Google a échoué.';
+    const origine = attente?.origine || process.env.BOUTIQUE_URL;
+    if (origine) return res.redirect(303, `${origine}/connexion-google?erreur=${encodeURIComponent(message)}`);
+    res.status(e.code || 500).send(message);
+  }
+};
+
+// GET /api/boutique/auth/google/attente/:nonce → la connexion, une seule fois (404 tant qu'elle n'est pas prête)
+exports.attenteGoogle = (req, res) => {
+  const a = attentesGoogle.get(req.params.nonce);
+  if (!a || !a.resultat) return res.status(404).json({ message: 'En attente.' });
+  attentesGoogle.delete(req.params.nonce);
+  res.json(a.resultat);
 };
 
 // GET /api/boutique/compte → profil + commandes passées depuis ce compte
