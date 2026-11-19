@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiImage, FiCopy } from 'react-icons/fi';
-import { listerProduits, creerProduit, modifierProduit, supprimerProduit, dupliquerProduit } from '../services/produitService';
+import { listerProduits, creerProduit, modifierProduit, supprimerProduit, dupliquerProduit, abonnesArrivages } from '../services/produitService';
 import { useAuth } from '../context/AuthContext';
 import { urlFichier } from '../utils/fichiers';
 
@@ -24,6 +24,8 @@ export default function Produits() {
   const [formulaire, setFormulaire] = useState(formulaireVide());
   const [chargement, setChargement] = useState(false);
   const [progression, setProgression] = useState(null); // % des photos envoyées
+  const [annoncer, setAnnoncer] = useState(true); // notification « Nouvel arrivage » aux clients
+  const [arrivages, setArrivages] = useState(null); // { actif, abonnes }
   const cleEnvoi = useRef(null); // même clé si on réessaie : le produit n'est jamais créé deux fois
   const [produitDetail, setProduitDetail] = useState(null); // pour la fenêtre "voir le contenu"
   const inputFichier = useRef(null);
@@ -41,6 +43,8 @@ export default function Produits() {
   useEffect(() => { chargerProduits(); }, [recherche]);
 
   const ouvrirCreation = () => {
+    setAnnoncer(true);
+    abonnesArrivages().then(setArrivages).catch(() => setArrivages(null));
     setFormulaire(formulaireVide());
     setEnEdition(null);
     cleEnvoi.current = null;
@@ -171,8 +175,11 @@ export default function Produits() {
           description: formulaire.description,
           variantes: formulaire.nouvellesVariantes.map((v) => ({ fichier: v.fichier, tailles: nettoyerTailles(v.tailles) })),
           cle_envoi: cleEnvoi.current,
+          annoncer,
         }, setProgression);
-        toast.success('Produit ajouté.');
+        toast.success(annoncer && arrivages?.actif && arrivages.abonnes > 0
+          ? `Produit ajouté. Annonce envoyée à ${arrivages.abonnes} client${arrivages.abonnes > 1 ? 's' : ''}.`
+          : 'Produit ajouté.');
       }
       cleEnvoi.current = null;
       setModalOuvert(false);
@@ -366,6 +373,18 @@ export default function Produits() {
                 </button>
                 <input ref={inputFichier} type="file" accept="image/*" multiple className="hidden" onChange={gererAjoutPhotos} />
               </div>
+
+              {!enEdition && arrivages?.actif && (
+                <label className="flex items-start gap-3 rounded-xl bg-blue-50 ring-1 ring-blue-100 px-3.5 py-3 cursor-pointer">
+                  <input type="checkbox" className="mt-0.5 w-5 h-5 accent-blue-600 shrink-0" checked={annoncer} onChange={(e) => setAnnoncer(e.target.checked)} />
+                  <span className="text-sm text-slate-700">
+                    <b className="text-slate-900">Annoncer ce nouvel arrivage aux clients</b><br />
+                    {arrivages.abonnes > 0
+                      ? `Notification avec la photo et le prix sur ${arrivages.abonnes} téléphone${arrivages.abonnes > 1 ? 's' : ''} (Koloun Boutique).`
+                      : "Aucun client n'a encore activé les notifications dans Koloun Boutique."}
+                  </span>
+                </label>
+              )}
 
               <div className="flex justify-end gap-2 mt-2">
                 <button type="button" onClick={() => setModalOuvert(false)} className="btn-secondary">Annuler</button>

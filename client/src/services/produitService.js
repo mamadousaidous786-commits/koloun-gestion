@@ -16,6 +16,7 @@ export const creerProduit = async (donnees, onProgression) => {
   const variantes = await reduire(donnees.variantes);
   const formData = new FormData();
   if (donnees.cle_envoi) formData.append('cle_envoi', donnees.cle_envoi);
+  formData.append('annoncer', donnees.annoncer === false ? '0' : '1'); // notification « Nouvel arrivage » aux clients de Koloun Boutique
   formData.append('nom', donnees.nom);
   formData.append('prix_normal', donnees.prix_normal);
   formData.append('description', donnees.description || '');
@@ -41,6 +42,9 @@ export const modifierProduit = async (id, donnees, onProgression) => {
   });
   return api.put(`/produits/${id}`, formData, optionsEnvoi(onProgression)).then((r) => r.data);
 };
+
+// Nombre de téléphones clients prévenus des nouveaux arrivages
+export const abonnesArrivages = () => api.get('/boutique/admin/notifications').then((r) => r.data);
 
 export const supprimerProduit = (id) => api.delete(`/produits/${id}`).then((r) => r.data);
 export const dupliquerProduit = (id) => api.post(`/produits/${id}/dupliquer`).then((r) => r.data);

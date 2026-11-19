@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/boutiqueController');
 const compte = require('../controllers/compteController');
+const notif = require('../controllers/notificationsClientsController');
 const { verifierToken, autoriserRoles } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
@@ -26,6 +27,11 @@ router.get('/speciales', ctrl.speciales);
 router.post('/commandes', limiterCommandes, ctrl.creerCommande);
 router.get('/commandes/:code', ctrl.voirCommande);
 
+// ---- Notifications « Nouvel arrivage » (le client les accepte sur son téléphone) ----
+router.get('/notifications/cle', notif.cle);
+router.post('/notifications/abonner', notif.abonner);
+router.post('/notifications/desabonner', notif.desabonner);
+
 // ---- Comptes clients (une seule porte : un compte Koloun Gestion ouvre l'espace vendeur) ----
 router.post('/auth/inscription', compte.inscription);
 router.post('/auth/connexion', compte.connexion);
@@ -36,6 +42,7 @@ router.post('/compte/commandes/:code/annuler', compte.exigerCompte, ctrl.annuler
 
 // ---- Vendeur : tout utilisateur connecté à Koloun Gestion ----
 router.get('/admin/commandes', verifierToken, ctrl.listerCommandes);
+router.get('/admin/notifications', verifierToken, notif.nombreAbonnes);
 router.get('/admin/a-confirmer', verifierToken, ctrl.aConfirmer);
 router.post('/admin/commandes/:id/accepter', verifierToken, ctrl.accepter);
 router.post('/admin/commandes/:id/refuser', verifierToken, ctrl.refuser);

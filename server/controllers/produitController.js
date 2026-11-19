@@ -5,6 +5,7 @@ const path = require('path');
 
 const INCLUS_COMPLET = [{ model: ProduitVariante, include: [ProduitTaille] }];
 const sequelize = require('../config/database');
+const { annoncerArrivage } = require('../utils/annonces');
 const envoisRecents = new Map(); // cle_envoi -> promesse de l'id du produit créé (30 min)
 
 // GET /api/produits
@@ -98,6 +99,13 @@ exports.creerProduit = async (req, res) => {
 
     const produitComplet = await Produit.findByPk(produit.id, { include: INCLUS_COMPLET });
     res.status(201).json(produitComplet);
+
+    // « Nouvel arrivage » envoyé aux clients de Koloun Boutique (en arrière-plan, après la réponse)
+    if (req.body.annoncer !== '0' && req.body.annoncer !== 'false') {
+      annoncerArrivage(produitComplet)
+        .then((n) => n && console.log(`📣 Nouvel arrivage « ${produitComplet.nom} » annoncé à ${n} téléphone(s).`))
+        .catch((e) => console.error('Annonce arrivage :', e.message));
+    }
   } catch (error) {
     await t.rollback().catch(() => {});
     if (terminer) { terminer(null); envoisRecents.delete(cle); }
