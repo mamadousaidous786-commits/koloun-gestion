@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 
 const INCLUS_COMPLET = [{ model: ProduitVariante, include: [ProduitTaille] }];
+const sequelize = require('../config/database');
+const envoisRecents = new Map(); // cle_envoi -> promesse de l'id du produit créé (30 min)
 
 // GET /api/produits
 exports.listerProduits = async (req, res) => {
@@ -44,50 +46,62 @@ exports.obtenirProduit = async (req, res) => {
 // multipart/form-data : plusieurs "images" (une par variante) + "variantes" = JSON stringifié
 // variantes = [{ tailles: [{ taille, quantite, seuil_alerte }] }]  (même ordre que les fichiers "images")
 exports.creerProduit = async (req, res) => {
+  // Même envoi reçu deux fois (connexion coupée puis « Ajouter » re-touché) : on renvoie le produit déjà créé
+  const cle = String(req.body.cle_envoi || '').slice(0, 64);
+  if (cle && envoisRecents.has(cle)) {
+    try {
+      const id = await envoisRecents.get(cle);
+      const deja = id && await Produit.findByPk(id, { include: INCLUS_COMPLET });
+      if (deja) return res.status(201).json(deja);
+    } catch { /* le premier envoi a échoué : on recommence normalement */ }
+  }
+  let terminer;
+  if (cle) {
+    envoisRecents.set(cle, new Promise((r) => { terminer = r; }));
+    setTimeout(() => envoisRecents.delete(cle), 30 * 60 * 1000);
+  }
+
+  const t = await sequelize.transaction();
   try {
     const { nom, prix_normal, description } = req.body;
+    if (!nom || !String(nom).trim()) throw Object.assign(new Error('Le nom du produit est obligatoire.'), { code: 400 });
     const variantes = req.body.variantes ? JSON.parse(req.body.variantes) : [];
 
     const produit = await Produit.create({
-      nom,
+      nom: String(nom).trim(),
       prix_normal,
       description,
       boutique_id: req.utilisateur.boutique_id,
-    });
+    }, { transaction: t });
 
     const fichiers = req.files || [];
     for (let i = 0; i < fichiers.length; i++) {
       const infosVariante = variantes[i] || { tailles: [] };
-
       const variante = await ProduitVariante.create({
         produit_id: produit.id,
         image: fichiers[i].path,
         description: infosVariante.description || null,
-      });
+      }, { transaction: t });
 
-      for (const t of infosVariante.tailles || []) {
-        const taille = await ProduitTaille.create({
-          produit_variante_id: variante.id,
-          taille: t.taille,
-          quantite: t.quantite || 0,
-          seuil_alerte: t.seuil_alerte || 3,
-        });
-
-        if (taille.quantite > 0) {
-          await MouvementStock.create({
-            produit_taille_id: taille.id,
-            type: 'entree',
-            quantite: taille.quantite,
-            motif: 'Stock initial',
-            utilisateur_id: req.utilisateur.id,
-          });
-        }
-      }
+      // Toutes les tailles de la photo en une seule fois (plus rapide)
+      const lignes = (infosVariante.tailles || [])
+        .filter((x) => String(x.taille || '').trim())
+        .map((x) => ({ produit_variante_id: variante.id, taille: String(x.taille).trim(), quantite: Math.max(0, parseInt(x.quantite, 10) || 0), seuil_alerte: x.seuil_alerte || 3 }));
+      const tailles = await ProduitTaille.bulkCreate(lignes, { transaction: t });
+      const entrees = tailles.filter((x) => x.quantite > 0).map((x) => ({
+        produit_taille_id: x.id, type: 'entree', quantite: x.quantite, motif: 'Stock initial', utilisateur_id: req.utilisateur.id,
+      }));
+      if (entrees.length) await MouvementStock.bulkCreate(entrees, { transaction: t });
     }
+    await t.commit();
+    if (terminer) terminer(produit.id);
 
     const produitComplet = await Produit.findByPk(produit.id, { include: INCLUS_COMPLET });
     res.status(201).json(produitComplet);
   } catch (error) {
+    await t.rollback().catch(() => {});
+    if (terminer) { terminer(null); envoisRecents.delete(cle); }
+    if (error.code === 400) return res.status(400).json({ message: error.message });
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
   }
 };

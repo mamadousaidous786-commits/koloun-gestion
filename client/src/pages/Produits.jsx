@@ -23,6 +23,8 @@ export default function Produits() {
   const [enEdition, setEnEdition] = useState(null);
   const [formulaire, setFormulaire] = useState(formulaireVide());
   const [chargement, setChargement] = useState(false);
+  const [progression, setProgression] = useState(null); // % des photos envoyées
+  const cleEnvoi = useRef(null); // même clé si on réessaie : le produit n'est jamais créé deux fois
   const [produitDetail, setProduitDetail] = useState(null); // pour la fenêtre "voir le contenu"
   const inputFichier = useRef(null);
   const { estAdmin } = useAuth();
@@ -41,6 +43,7 @@ export default function Produits() {
   const ouvrirCreation = () => {
     setFormulaire(formulaireVide());
     setEnEdition(null);
+    cleEnvoi.current = null;
     setModalOuvert(true);
   };
 
@@ -58,6 +61,7 @@ export default function Produits() {
       nouvellesVariantes: [],
     });
     setEnEdition(produit.id);
+    cleEnvoi.current = null;
     setModalOuvert(true);
   };
 
@@ -140,6 +144,8 @@ export default function Produits() {
   const soumettre = async (e) => {
     e.preventDefault();
     setChargement(true);
+    setProgression(null);
+    if (!cleEnvoi.current) cleEnvoi.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     try {
       const nettoyerTailles = (tailles) => tailles.filter((t) => t.taille.trim() !== '');
 
@@ -151,7 +157,7 @@ export default function Produits() {
           variantesExistantes: formulaire.variantesExistantes.map((v) => ({ id: v.id, tailles: nettoyerTailles(v.tailles) })),
           variantesASupprimer: formulaire.variantesASupprimer,
           nouvellesVariantes: formulaire.nouvellesVariantes.map((v) => ({ fichier: v.fichier, tailles: nettoyerTailles(v.tailles) })),
-        });
+        }, setProgression);
         toast.success('Produit modifié.');
       } else {
         if (formulaire.nouvellesVariantes.length === 0) {
@@ -164,15 +170,19 @@ export default function Produits() {
           prix_normal: formulaire.prix_normal,
           description: formulaire.description,
           variantes: formulaire.nouvellesVariantes.map((v) => ({ fichier: v.fichier, tailles: nettoyerTailles(v.tailles) })),
-        });
+          cle_envoi: cleEnvoi.current,
+        }, setProgression);
         toast.success('Produit ajouté.');
       }
+      cleEnvoi.current = null;
       setModalOuvert(false);
       chargerProduits();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Erreur.');
+      if (err.response) toast.error(err.response.data?.message || "Erreur lors de l'enregistrement.");
+      else toast.error("La connexion a été coupée ou est trop lente. Touchez « Ajouter » à nouveau : le produit ne sera pas créé en double.", { autoClose: 8000 });
     } finally {
       setChargement(false);
+      setProgression(null);
     }
   };
 
@@ -359,7 +369,7 @@ export default function Produits() {
 
               <div className="flex justify-end gap-2 mt-2">
                 <button type="button" onClick={() => setModalOuvert(false)} className="btn-secondary">Annuler</button>
-                <button type="submit" disabled={chargement} className="btn-primary">{chargement ? 'Enregistrement...' : enEdition ? 'Enregistrer' : 'Ajouter'}</button>
+                <button type="submit" disabled={chargement} className="btn-primary">{chargement ? (progression !== null && progression < 100 ? `Envoi des photos… ${progression} %` : 'Enregistrement…') : enEdition ? 'Enregistrer' : 'Ajouter'}</button>
               </div>
             </form>
           </div>
