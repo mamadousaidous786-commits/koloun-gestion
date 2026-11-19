@@ -15,7 +15,7 @@ export default function Modal({ titre, onClose, children, large = false }) {
       onClick={onClose}
     >
       <div
-        className={`bg-white w-full ${large ? 'sm:max-w-3xl' : 'sm:max-w-lg'} max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl shadow-2xl`}
+        className={`bg-white w-full ${large ? 'sm:max-w-3xl' : 'sm:max-w-lg'} fenetre-modal overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-2xl shadow-2xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 bg-white flex items-center justify-between px-5 py-4 border-b border-slate-100">

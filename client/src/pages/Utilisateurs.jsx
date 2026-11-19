@@ -63,7 +63,7 @@ export default function Utilisateurs() {
 
       {modalOuvert && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="card w-full max-w-md">
+          <div className="card w-full max-w-md fenetre-modal overflow-y-auto overscroll-contain">
             <h2 className="titre-or text-lg mb-4">Nouvel utilisateur</h2>
             <form onSubmit={soumettre} className="grid grid-cols-2 gap-3">
               <input required placeholder="Nom" className="input-champ" value={formulaire.nom} onChange={(e) => setFormulaire({ ...formulaire, nom: e.target.value })} />

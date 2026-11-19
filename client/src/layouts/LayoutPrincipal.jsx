@@ -21,6 +21,22 @@ export default function LayoutPrincipal() {
   // Au démarrage : on charge les données principales en arrière-plan
   useEffect(() => { prechargerDonnees(); resynchroniserAlertes(); }, []);
 
+  // Téléphone : quand le clavier s'ouvre sur un champ d'une fenêtre et le cache, on fait remonter ce champ.
+  // Rien ne bouge si le champ est déjà visible.
+  useEffect(() => {
+    const surFocus = (e) => {
+      const el = e.target;
+      if (!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || !el.closest('.fenetre-modal')) return;
+      setTimeout(() => {
+        const visible = window.visualViewport?.height || window.innerHeight;
+        const r = el.getBoundingClientRect();
+        if (r.bottom > visible - 12 || r.top < 0) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 350);
+    };
+    document.addEventListener('focusin', surFocus);
+    return () => document.removeEventListener('focusin', surFocus);
+  }, []);
+
   // Téléphone : chaque cellule de tableau reçoit le nom de sa colonne (affiché par index.css en mode « carte »)
   const zone = useRef(null);
   useEffect(() => {

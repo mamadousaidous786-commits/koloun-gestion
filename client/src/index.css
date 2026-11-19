@@ -4,7 +4,7 @@
 
 @layer base {
   /* La place de la barre de défilement est toujours réservée : la page ne se décale plus quand elle apparaît */
-  html { -webkit-tap-highlight-color: transparent; scrollbar-gutter: stable; }
+  html { -webkit-tap-highlight-color: transparent; scrollbar-gutter: stable; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body {
     @apply bg-charbon-950 text-charbon-50 font-sans antialiased;
     /* Chiffres à largeur fixe : les montants ne font plus bouger les colonnes en changeant */
@@ -61,6 +61,16 @@
     @apply block text-xs font-medium text-slate-500 mb-1;
   }
 }
+
+/* Téléphone : les champs de saisie sont en 16 px. En dessous, l'iPhone zoome dès qu'on touche un champ
+   et toute la fenêtre paraît s'agrandir. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select, textarea { font-size: 16px !important; }
+}
+
+/* Fenêtres : hauteur basée sur la partie visible de l'écran (le clavier ouvert ne les fait plus déborder) */
+.fenetre-modal { max-height: 92vh; max-height: 92dvh; }
 
 /* Téléphone : chaque ligne de tableau devient une carte (étiquette à gauche, valeur à droite).
    Les étiquettes viennent des en-têtes de colonnes (voir LayoutPrincipal). Pour garder un tableau tel quel : class="table-fixe". */

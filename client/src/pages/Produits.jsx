@@ -257,7 +257,7 @@ export default function Produits() {
       {/* Modal détail (voir le contenu de chaque photo) */}
       {produitDetail && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setProduitDetail(null)}>
-          <div className="card w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="card w-full max-w-2xl fenetre-modal overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h2 className="titre-or text-lg">{produitDetail.nom}</h2>
@@ -290,7 +290,7 @@ export default function Produits() {
       {/* Modal création/édition */}
       {modalOuvert && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="card w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="card w-full max-w-2xl fenetre-modal overflow-y-auto overscroll-contain">
             <h2 className="titre-or text-lg mb-4">{enEdition ? 'Modifier le produit' : 'Nouveau produit'}</h2>
             <form onSubmit={soumettre} className="space-y-4">
               <input required placeholder="Nom du produit" className="input-champ" value={formulaire.nom} onChange={(e) => setFormulaire({ ...formulaire, nom: e.target.value })} />
