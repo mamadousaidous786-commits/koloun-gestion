@@ -110,6 +110,7 @@ module.exports = async function migrerBoutique(sequelize) {
     ['frais_livraison', 'DECIMAL(12,2) NOT NULL DEFAULT 0'],
     ['motif', 'VARCHAR(255) NULL'],
     ['livraison_id', 'INT NULL'],
+    ['vente_id', 'INT NULL'], // vente enregistrée automatiquement à la livraison
   ]) {
     await etape(`boutique_commandes.${col}`, async () => {
       if (!(await colonneExiste('boutique_commandes', col))) await q(`ALTER TABLE boutique_commandes ADD COLUMN ${col} ${def}`);

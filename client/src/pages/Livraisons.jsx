@@ -18,6 +18,13 @@ const STATUTS = {
   annulee: { label: 'Annulée', classe: 'bg-slate-100 text-slate-500 ring-slate-200' },
 };
 
+// Mêmes moyens de paiement que la caisse (page Ventes)
+const MOYENS_PAIEMENT = [
+  { id: 3, nom: 'Cash' },
+  { id: 1, nom: 'Orange Money' },
+  { id: 2, nom: 'Paiement Marchand' },
+];
+
 const ligneVide = () => ({ designation: '', taille: '', photo: null, image: null });
 const vide = () => ({ client_nom: '', client_telephone: '', adresse: '', lignes: [ligneVide()], montant_livraison: '', montant_a_encaisser: '', livreur: '', note: '', date_livraison: aujourdhui(), photo: null });
 
@@ -49,6 +56,7 @@ export default function Livraisons() {
   const [f, setF] = useState(vide());
   const [enregistrement, setEnregistrement] = useState(false);
   const [annulation, setAnnulation] = useState(null); // { livraison, motif }
+  const [encaissement, setEncaissement] = useState(null); // { livraison, moyen } : commande en ligne livrée → vente
   const [visionneuse, setVisionneuse] = useState(null); // { photos, depart }
 
   const charger = useCallback(() => {
@@ -96,11 +104,15 @@ export default function Livraisons() {
     } finally { setEnregistrement(false); }
   };
 
-  const valider = async (l, statut, motif) => {
+  const valider = async (l, statut, motif, moyen) => {
+    if (statut !== 'livree' && l.statut === 'livree' && l.commande_en_ligne?.vente_id
+      && !window.confirm(`La vente ${l.commande_en_ligne.numero_recu} sera supprimée et le stock remis. Continuer ?`)) return;
     try {
-      await changerStatutLivraison(l.id, statut, motif);
-      toast.success(statut === 'livree' ? 'Livraison validée ✅' : statut === 'annulee' ? 'Livraison annulée.' : 'Remise à livrer.');
+      const maj = await changerStatutLivraison(l.id, statut, motif, moyen);
+      const recu = maj?.commande_en_ligne?.numero_recu;
+      toast.success(statut === 'livree' ? (recu ? `Livraison validée ✅ — vente ${recu} enregistrée` : 'Livraison validée ✅') : statut === 'annulee' ? 'Livraison annulée.' : 'Remise à livrer.');
       setAnnulation(null);
+      setEncaissement(null);
       charger();
     } catch (err) { toast.error(err.response?.data?.message || 'Action impossible.'); }
   };
@@ -156,6 +168,12 @@ export default function Livraisons() {
                   <p className="text-sm text-slate-700 mt-1">{l.client_nom}{l.client_telephone ? ` · ${l.client_telephone}` : ''}</p>
                   {l.adresse && <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5"><FiMapPin size={12} /> {l.adresse}</p>}
                   {l.livreur && <p className="text-xs text-slate-500 mt-0.5">Livreur : {l.livreur}</p>}
+                  {l.commande_en_ligne && (
+                    <p className="text-[11px] font-semibold text-blue-700 bg-blue-50 rounded-md px-2 py-0.5 mt-1 w-fit">
+                      Boutique en ligne · <span className="whitespace-nowrap">{l.commande_en_ligne.reference}</span>
+                      {l.commande_en_ligne.numero_recu && <> · <span className="whitespace-nowrap">vente {l.commande_en_ligne.numero_recu}</span></>}
+                    </p>
+                  )}
                   {retard(l) && <p className="text-xs text-red-600 font-medium mt-1">En retard — prévue le {new Date(l.date_livraison).toLocaleDateString('fr-FR')}</p>}
                 </div>
               </div>
@@ -171,7 +189,7 @@ export default function Livraisons() {
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 {l.statut === 'en_cours' ? (
                   <>
-                    <button onClick={() => valider(l, 'livree')} className="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl px-4 py-2"><FiCheck /> Livrée</button>
+                    <button onClick={() => (l.commande_en_ligne ? setEncaissement({ livraison: l, moyen: 3 }) : valider(l, 'livree'))} className="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl px-4 py-2"><FiCheck /> Livrée</button>
                     <button onClick={() => setAnnulation({ livraison: l, motif: '' })} className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl px-4 py-2"><FiX /> Annulée</button>
                     <button onClick={() => ouvrirEdition(l)} className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-2.5 py-2"><FiEdit2 size={13} /> Modifier</button>
                   </>
@@ -238,6 +256,32 @@ export default function Livraisons() {
       )}
 
       {visionneuse && <VisionneusePhotos photos={visionneuse.photos} depart={visionneuse.depart} onClose={() => setVisionneuse(null)} />}
+
+      {encaissement && (
+        <Modal titre={`Livraison ${encaissement.livraison.numero} effectuée`} onClose={() => setEncaissement(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">C'est une commande de la boutique en ligne ({encaissement.livraison.commande_en_ligne.reference}) : la vente est enregistrée automatiquement et le stock mis à jour.</p>
+            <div>
+              <label className="etiquette">Comment le client a-t-il payé ?</label>
+              <div className="grid grid-cols-3 gap-2">
+                {MOYENS_PAIEMENT.map((m) => (
+                  <button key={m.id} type="button" onClick={() => setEncaissement({ ...encaissement, moyen: m.id })}
+                    className={`h-11 rounded-xl text-sm font-semibold ring-1 ${encaissement.moyen === m.id ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>{m.nom}</button>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-1 tabular-nums">
+              <p className="flex justify-between"><span>Vente (articles)</span><b>{formaterGNF(encaissement.livraison.commande_en_ligne.montant_articles)}</b></p>
+              <p className="flex justify-between text-slate-500"><span>Frais de livraison (restent dans Livraisons)</span><span>{formaterGNF(encaissement.livraison.montant_livraison)}</span></p>
+              <p className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200"><span>Encaissé auprès du client</span><span>{formaterGNF(encaissement.livraison.montant_a_encaisser)}</span></p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEncaissement(null)} className="btn-secondary">Retour</button>
+              <button onClick={() => valider(encaissement.livraison, 'livree', undefined, encaissement.moyen)} className="btn-primary !bg-emerald-600 hover:!bg-emerald-700"><FiCheck /> Valider la livraison et la vente</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {annulation && (
         <Modal titre={`Annuler ${annulation.livraison.numero}`} onClose={() => setAnnulation(null)}>
