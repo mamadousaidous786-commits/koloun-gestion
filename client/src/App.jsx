@@ -14,6 +14,7 @@ const DashboardUtilisateur = lazy(() => import('./pages/DashboardUtilisateur'));
 const Produits = lazy(() => import('./pages/Produits'));
 const Ventes = lazy(() => import('./pages/Ventes'));
 const Livraisons = lazy(() => import('./pages/Livraisons'));
+const Reservations = lazy(() => import('./pages/Reservations'));
 const Commandes = lazy(() => import('./pages/Commandes'));
 const Utilisateurs = lazy(() => import('./pages/Utilisateurs'));
 const Comptabilite = lazy(() => import('./pages/Comptabilite'));
@@ -71,6 +72,7 @@ export default function App() {
             <Route path="/produits" element={<Produits />} />
             <Route path="/ventes" element={<Ventes />} />
             <Route path="/livraisons" element={<Livraisons />} />
+            <Route path="/reservations" element={<Reservations />} />
             <Route path="/commandes-speciales" element={<Admin><CommandesSpeciales /></Admin>} />
             <Route path="/clients" element={<Clients />} />
             <Route path="/notifications" element={<Notifications />} />

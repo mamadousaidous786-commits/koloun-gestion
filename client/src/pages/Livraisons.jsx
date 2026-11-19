@@ -277,7 +277,7 @@ export default function Livraisons() {
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setEncaissement(null)} className="btn-secondary">Retour</button>
-              <button onClick={() => valider(encaissement.livraison, 'livree', undefined, encaissement.moyen)} className="btn-primary !bg-emerald-600 hover:!bg-emerald-700"><FiCheck /> Valider la livraison et la vente</button>
+              <button onClick={() => valider(encaissement.livraison, 'livree', undefined, encaissement.moyen)} className="btn-primary !bg-none !bg-emerald-600 hover:!bg-emerald-700"><FiCheck /> Valider la livraison et la vente</button>
             </div>
           </div>
         </Modal>

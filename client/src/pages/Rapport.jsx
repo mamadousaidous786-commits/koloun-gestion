@@ -7,11 +7,14 @@ import { formaterGNF, moisCourant } from '../utils/format';
 
 const NOMS_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
+// Texte enregistré avec le mauvais encodage (ex. « GuinÃ©e ») : on le répare à l'affichage
+const propre = (t) => { try { return t && /[ÃÂ]/.test(t) ? decodeURIComponent(escape(t)) : t; } catch { return t; } };
+
 function Ligne({ libelle, valeur, fort, couleur }) {
   return (
-    <div className={`flex justify-between py-2 text-sm ${fort ? 'font-bold border-t border-slate-200 mt-1 pt-3 text-base' : 'text-slate-700'}`}>
+    <div className={`flex justify-between gap-3 py-2 text-sm ${fort ? 'font-bold border-t border-slate-200 mt-1 pt-3 text-base' : 'text-slate-700'}`}>
       <span>{libelle}</span>
-      <span className={couleur || ''}>{valeur}</span>
+      <span className={`whitespace-nowrap text-right ${couleur || ''}`}>{valeur}</span>
     </div>
   );
 }
@@ -42,7 +45,7 @@ export default function Rapport() {
           <div className="card text-center">
             <p className="text-xs uppercase tracking-widest text-slate-400">Rapport d'activité</p>
             <h2 className="text-2xl font-bold text-slate-900 capitalize">{titreMois}</h2>
-            <p className="text-sm text-slate-500">{r.boutique.nom}{r.boutique.adresse ? ` — ${r.boutique.adresse}` : ''}{r.boutique.telephone ? ` — ${r.boutique.telephone}` : ''}</p>
+            <p className="text-sm text-slate-500">{r.boutique.nom}{r.boutique.adresse ? ` — ${propre(r.boutique.adresse)}` : ''}{r.boutique.telephone ? ` — ${r.boutique.telephone}` : ''}</p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -88,13 +91,13 @@ export default function Rapport() {
             <div className="card">
               <h3 className="font-semibold text-slate-900 mb-2">Produits les plus vendus</h3>
               {r.ventes.top_produits.length === 0 ? <p className="text-sm text-slate-400">—</p> : (
-                <table className="w-full text-sm">
+                <table className="table-fixe w-full text-sm">
                   <tbody>
                     {r.ventes.top_produits.map((p) => (
                       <tr key={p.produit} className="border-b border-slate-50">
                         <td className="py-1.5">{p.produit}</td>
-                        <td className="py-1.5 text-right text-slate-500">{p.quantite} vendu(s)</td>
-                        <td className="py-1.5 text-right font-medium">{formaterGNF(p.montant)}</td>
+                        <td className="py-1.5 text-right text-slate-500 whitespace-nowrap">{p.quantite} vendu(s)</td>
+                        <td className="py-1.5 text-right font-medium whitespace-nowrap">{formaterGNF(p.montant)}</td>
                       </tr>
                     ))}
                   </tbody>

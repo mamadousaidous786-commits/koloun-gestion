@@ -116,4 +116,39 @@ module.exports = async function migrerBoutique(sequelize) {
       if (!(await colonneExiste('boutique_commandes', col))) await q(`ALTER TABLE boutique_commandes ADD COLUMN ${col} ${def}`);
     });
   }
+
+  // Réservations (Koloun Gestion) : articles mis de côté pour un client, payés et remis le jour du retrait
+  await etape('reservations', () => q(`CREATE TABLE IF NOT EXISTS reservations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    numero VARCHAR(30) NOT NULL,
+    client_id INT NULL,
+    client_nom VARCHAR(150) NOT NULL,
+    client_telephone VARCHAR(40) NULL,
+    date_retrait_prevue DATE NULL,
+    note VARCHAR(255) NULL,
+    total DECIMAL(12,2) NOT NULL DEFAULT 0,
+    statut ENUM('en_attente','retiree','annulee') NOT NULL DEFAULT 'en_attente',
+    motif VARCHAR(255) NULL,
+    vente_id INT NULL,
+    cree_par INT NULL,
+    traite_par INT NULL,
+    date_traitement DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_res_boutique (boutique_id, statut)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`));
+  await etape('reservation_articles', () => q(`CREATE TABLE IF NOT EXISTS reservation_articles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    reservation_id INT NOT NULL,
+    produit_taille_id INT NULL,
+    produit_nom VARCHAR(150) NOT NULL,
+    taille VARCHAR(50) NULL,
+    image VARCHAR(500) NULL,
+    prix_normal DECIMAL(12,2) NOT NULL DEFAULT 0,
+    prix DECIMAL(12,2) NOT NULL DEFAULT 0,
+    quantite INT NOT NULL DEFAULT 1,
+    INDEX idx_resa (reservation_id),
+    CONSTRAINT fk_resa_article FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`));
 };

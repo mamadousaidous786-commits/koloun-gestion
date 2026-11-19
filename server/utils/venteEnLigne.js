@@ -142,4 +142,4 @@ async function annulerVenteEnLigne(livraison, transaction) {
   return true;
 }
 
-module.exports = { enregistrerVenteEnLigne, annulerVenteEnLigne, commandeDeLaLivraison };
+module.exports = { enregistrerVenteEnLigne, annulerVenteEnLigne, commandeDeLaLivraison, numeroRecu, moyenValide };

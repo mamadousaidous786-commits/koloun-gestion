@@ -58,13 +58,13 @@ function Onglets({ onglet, setOnglet }) {
   const bouton = (cle, icone, libelle) => (
     <button type="button" onClick={() => setOnglet(cle)}
       className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 h-10 rounded-lg text-sm font-semibold ${onglet === cle ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-      {icone} {libelle}
+      {icone} <span className="whitespace-nowrap">{libelle}</span>
     </button>
   );
   return (
     <div className="flex gap-1 p-1 bg-slate-200/60 rounded-xl mb-5 w-full sm:w-fit">
-      {bouton('commandes', <FiList />, 'Commandes des clients')}
-      {bouton('catalogue', <FiShoppingBag />, 'Modèles en ligne (boutique)')}
+      {bouton('commandes', <FiList />, <><span className="sm:hidden">Commandes</span><span className="hidden sm:inline">Commandes des clients</span></>)}
+      {bouton('catalogue', <FiShoppingBag />, <><span className="sm:hidden">Modèles en ligne</span><span className="hidden sm:inline">Modèles en ligne (boutique)</span></>)}
     </div>
   );
 }

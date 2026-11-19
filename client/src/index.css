@@ -62,6 +62,34 @@
   }
 }
 
+/* Téléphone : chaque ligne de tableau devient une carte (étiquette à gauche, valeur à droite).
+   Les étiquettes viennent des en-têtes de colonnes (voir LayoutPrincipal). Pour garder un tableau tel quel : class="table-fixe". */
+@media (max-width: 639px) {
+  main table:not(.table-fixe),
+  main table:not(.table-fixe) tbody,
+  main table:not(.table-fixe) tr,
+  main table:not(.table-fixe) td { display: block; width: 100%; }
+  main table:not(.table-fixe) thead { display: none; }
+  main table:not(.table-fixe) tr {
+    border: 1px solid #e2e8f0; border-radius: 0.875rem; padding: 0.5rem 0.875rem; margin-bottom: 0.625rem; background: #fff;
+  }
+  main table:not(.table-fixe) tbody tr:hover { background: #fff; }
+  main table:not(.table-fixe) td {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.375rem 0 !important; text-align: right; white-space: normal; min-height: 2rem;
+  }
+  main table:not(.table-fixe) td + td { border-top: 1px dashed #f1f5f9; }
+  main table:not(.table-fixe) td[data-label]::before {
+    content: attr(data-label); flex-shrink: 0; text-align: left;
+    font-size: 0.75rem; font-weight: 500; color: #64748b;
+  }
+  main table:not(.table-fixe) td:empty { display: none; }
+  main table:not(.table-fixe) td[colspan] { justify-content: center; text-align: center; border: 0; }
+  main table:not(.table-fixe) tr:has(td[colspan]) { border: 0; background: transparent; }
+  main .overflow-x-auto:has(> table:not(.table-fixe)),
+  main .overflow-x-auto:has(table:not(.table-fixe)) { overflow-x: visible; }
+}
+
 /* Barres de défilement fines */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

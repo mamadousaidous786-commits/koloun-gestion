@@ -1,7 +1,7 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  FiGrid, FiBox, FiShoppingCart, FiUsers, FiTruck, FiBarChart2, FiBell, FiLogOut, FiDollarSign,
+  FiGrid, FiBox, FiShoppingCart, FiBookmark, FiUsers, FiTruck, FiBarChart2, FiBell, FiLogOut, FiDollarSign,
   FiMenu, FiX, FiStar, FiUser, FiCreditCard, FiFileText, FiLock, FiDatabase, FiTrendingDown,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +20,23 @@ export default function LayoutPrincipal() {
 
   // Au démarrage : on charge les données principales en arrière-plan
   useEffect(() => { prechargerDonnees(); resynchroniserAlertes(); }, []);
+
+  // Téléphone : chaque cellule de tableau reçoit le nom de sa colonne (affiché par index.css en mode « carte »)
+  const zone = useRef(null);
+  useEffect(() => {
+    const etiqueter = () => zone.current?.querySelectorAll('table:not(.table-fixe)').forEach((t) => {
+      const titres = [...t.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+      if (!titres.length) return;
+      t.querySelectorAll('tbody tr').forEach((tr) => [...tr.children].forEach((td, i) => {
+        if (td.hasAttribute('colspan')) return;
+        if (titres[i]) { if (td.dataset.label !== titres[i]) td.dataset.label = titres[i]; } else if (td.dataset.label) delete td.dataset.label;
+      }));
+    });
+    etiqueter();
+    const obs = new MutationObserver(etiqueter);
+    if (zone.current) obs.observe(zone.current, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, []);
 
   // Données rafraîchies en silence : on remet à jour uniquement les pages de consultation (jamais un formulaire en cours)
   useEffect(() => {
@@ -77,6 +94,7 @@ export default function LayoutPrincipal() {
             <Lien to="/tableau-de-bord" icone={<FiGrid />}>Tableau de bord</Lien>
             <Lien to="/ventes" icone={<FiShoppingCart />}>Ventes</Lien>
             <Lien to="/livraisons" icone={<FiTruck />}>Livraisons du jour</Lien>
+            <Lien to="/reservations" icone={<FiBookmark />}>Réservations</Lien>
             <Lien to="/produits" icone={<FiBox />}>Produits</Lien>
             {estAdmin && <Lien to="/commandes-speciales" icone={<FiStar />}>Commandes spéciales</Lien>}
             <Lien to="/clients" icone={<FiUser />}>Clients</Lien>
@@ -126,7 +144,7 @@ export default function LayoutPrincipal() {
           <img src={logo} alt="" className="w-8 h-8 object-cover rounded-full ring-2 ring-white/20" />
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
+        <main ref={zone} className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
           <div className="max-w-7xl mx-auto">
             <Suspense fallback={<div className="flex justify-center py-24"><div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" /></div>}>
               <ErreurLimite cle={location.pathname}><React.Fragment key={versionPage}><Outlet /></React.Fragment></ErreurLimite>
