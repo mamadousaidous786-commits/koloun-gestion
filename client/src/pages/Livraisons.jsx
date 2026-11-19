@@ -5,6 +5,7 @@ import EnTete from '../components/EnTete';
 import Modal from '../components/Modal';
 import BoutonsContact from '../components/BoutonsContact';
 import VisionneusePhotos from '../components/VisionneusePhotos';
+import CommandesEnLigne from '../components/CommandesEnLigne';
 import { listerLivraisons, creerLivraison, modifierLivraison, changerStatutLivraison, supprimerLivraison } from '../services/livraisonService';
 import { useAuth } from '../context/AuthContext';
 import { urlFichier } from '../utils/fichiers';
@@ -122,6 +123,9 @@ export default function Livraisons() {
         <input type="date" value={jour} onChange={(e) => setJour(e.target.value || aujourdhui())} className="input-champ !w-auto" />
         <button onClick={ouvrirNouvelle} className="btn-primary"><FiPlus /> Nouvelle livraison</button>
       </EnTete>
+
+      {/* Commandes passées depuis l'application Koloun Boutique : à accepter ou refuser */}
+      <CommandesEnLigne jour={jour} onAccepte={charger} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[['À livrer', aLivrer.length, 'text-amber-600'], ['Livrées', livrees.length, 'text-emerald-600'], ['Annulées', annulees.length, 'text-slate-500'], ['Frais de livraison (livrées)', formaterGNF(fraisLivres), 'text-blue-700']].map(([t, v, c]) => (

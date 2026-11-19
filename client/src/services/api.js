@@ -20,7 +20,7 @@ const cache = new Map();      // clé -> { data, t }
 const enCours = new Map();    // clé -> promesse (évite les doublons)
 const FRAIS_MS = 10 * 1000;           // < 10 s : aucune requête
 const PERIME_MS = 10 * 60 * 1000;     // < 10 min : affiché tout de suite + rafraîchi en arrière-plan
-const SANS_CACHE_PERIME = /^\/notifications/; // toujours revérifiées
+const SANS_CACHE_PERIME = /^\/(notifications|boutique\/admin\/a-confirmer)/; // toujours revérifiées (nouvelles commandes en ligne)
 
 const cle = (url, params) => {
   const p = Object.entries(params || {})

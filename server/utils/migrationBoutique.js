@@ -102,4 +102,17 @@ module.exports = async function migrerBoutique(sequelize) {
       await q('ALTER TABLE boutique_commandes ADD COLUMN compte_client_id INT NULL, ADD INDEX idx_bc_compte (compte_client_id)');
     }
   });
+
+  // Circuit commande → livraison : mode (livraison / retrait), adresse, frais, motif, livraison liée dans « Livraisons »
+  for (const [col, def] of [
+    ['mode_livraison', "ENUM('livraison','retrait') NOT NULL DEFAULT 'livraison'"],
+    ['adresse', 'VARCHAR(255) NULL'],
+    ['frais_livraison', 'DECIMAL(12,2) NOT NULL DEFAULT 0'],
+    ['motif', 'VARCHAR(255) NULL'],
+    ['livraison_id', 'INT NULL'],
+  ]) {
+    await etape(`boutique_commandes.${col}`, async () => {
+      if (!(await colonneExiste('boutique_commandes', col))) await q(`ALTER TABLE boutique_commandes ADD COLUMN ${col} ${def}`);
+    });
+  }
 };

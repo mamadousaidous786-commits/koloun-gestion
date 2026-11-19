@@ -6,13 +6,23 @@
 // ============================================================
 const crypto = require('crypto');
 const sequelize = require('../config/database');
-const { Notification } = require('../models');
+const { Notification, Livraison, LivraisonArticle } = require('../models');
 const { lireCompte } = require('./compteController');
 
 const BOUTIQUE_ID = Number(process.env.BOUTIQUE_PUBLIQUE_ID || 1);
 const SELECT = { type: sequelize.QueryTypes.SELECT };
 const sql = (texte, replacements = []) => sequelize.query(texte, { ...SELECT, replacements });
 const exec = (texte, replacements = []) => sequelize.query(texte, { replacements }); // écritures (UPDATE / INSERT)
+
+// Statut vu par le client : quand la commande est devenue une livraison dans Koloun Gestion,
+// c'est la livraison qui fait foi (en cours → expédiée, livrée, annulée)
+const JOINTURE_LIVRAISON = 'LEFT JOIN livraisons lv ON lv.id = c.livraison_id';
+const STATUT_SQL = `CASE WHEN c.livraison_id IS NOT NULL AND lv.id IS NULL THEN 'annulee'
+  WHEN lv.statut = 'livree' THEN 'livree' WHEN lv.statut = 'annulee' THEN 'annulee'
+  WHEN lv.statut = 'en_cours' THEN 'validee' ELSE c.statut END`;
+const MOTIF_SQL = `COALESCE(lv.motif, CASE WHEN c.livraison_id IS NOT NULL AND lv.id IS NULL THEN 'Livraison supprimée par la boutique' END, c.motif)`;
+exports.JOINTURE_LIVRAISON = JOINTURE_LIVRAISON;
+exports.STATUT_SQL = STATUT_SQL;
 
 // Photo stockée en local (/uploads/...) → adresse complète ; Cloudinary → inchangée
 function urlImage(req, chemin) {
@@ -158,7 +168,12 @@ exports.speciales = async (req, res) => {
 exports.creerCommande = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { client_nom, client_telephone, note, intention } = req.body || {};
+    const compte = lireCompte(req);
+    if (!compte) throw Object.assign(new Error('Connectez-vous ou créez un compte pour valider votre commande.'), { code: 401 });
+    const { client_nom, client_telephone, note } = req.body || {};
+    const mode = req.body?.mode_livraison === 'retrait' ? 'retrait' : 'livraison';
+    const adresse = String(req.body?.adresse || '').trim();
+    if (mode === 'livraison' && adresse.length < 3) throw Object.assign(new Error('Indiquez votre quartier ou votre adresse de livraison.'), { code: 400 });
     const lignesDemandees = Array.isArray(req.body?.lignes) ? req.body.lignes.slice(0, 50) : [];
     if (!client_nom || String(client_nom).trim().length < 2) throw Object.assign(new Error('Indiquez votre nom.'), { code: 400 });
     if (!client_telephone || String(client_telephone).replace(/\D/g, '').length < 8) throw Object.assign(new Error('Indiquez un numéro de téléphone valide.'), { code: 400 });
@@ -193,10 +208,11 @@ exports.creerCommande = async (req, res) => {
     const code = crypto.randomBytes(8).toString('hex');
 
     const [id] = await sequelize.query(
-      `INSERT INTO boutique_commandes (boutique_id, reference, code, type, statut, client_nom, client_telephone, note_client, total_initial, total_final, compte_client_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      { type: sequelize.QueryTypes.INSERT, replacements: [BOUTIQUE_ID, reference, code, type, intention === 'discuter' ? 'en_discussion' : 'nouvelle',
-        String(client_nom).trim().slice(0, 150), String(client_telephone).trim().slice(0, 50), note ? String(note).slice(0, 500) : null, total, total, lireCompte(req)?.compte_id || null], transaction: t });
+      `INSERT INTO boutique_commandes (boutique_id, reference, code, type, statut, client_nom, client_telephone, note_client, total_initial, total_final, compte_client_id, mode_livraison, adresse)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      { type: sequelize.QueryTypes.INSERT, replacements: [BOUTIQUE_ID, reference, code, type, 'nouvelle',
+        String(client_nom).trim().slice(0, 150), String(client_telephone).trim().slice(0, 50), note ? String(note).slice(0, 500) : null, total, total, compte.compte_id,
+        mode, mode === 'livraison' ? adresse.slice(0, 255) : null], transaction: t });
 
     for (const l of lignes) {
       await sequelize.query(
@@ -210,7 +226,7 @@ exports.creerCommande = async (req, res) => {
     Notification.create({
       boutique_id: BOUTIQUE_ID,
       type: 'commande_boutique',
-      message: `Nouvelle commande en ligne ${reference} — ${String(client_nom).trim()} (${total.toLocaleString('fr-FR')} GNF)${intention === 'discuter' ? ' — souhaite discuter du prix' : ''}`,
+      message: `Commande en ligne à confirmer ${reference} — ${String(client_nom).trim()} (${total.toLocaleString('fr-FR')} GNF, ${mode === 'retrait' ? 'retrait en boutique' : `livraison : ${adresse}`})`.slice(0, 255),
     }).catch(() => {});
 
     res.status(201).json({ reference, code, total, type });
@@ -221,7 +237,9 @@ exports.creerCommande = async (req, res) => {
 };
 
 async function chargerCommande(where, params) {
-  const [c] = await sql(`SELECT * FROM boutique_commandes WHERE ${where} LIMIT 1`, params);
+  const ou = where.replace(/\b(id|code|boutique_id)\b/g, 'c.$1');
+  const [c] = await sql(`SELECT c.*, ${STATUT_SQL} AS statut_reel, ${MOTIF_SQL} AS motif_reel, lv.livreur, lv.date_livraison, lv.numero AS livraison_numero
+    FROM boutique_commandes c ${JOINTURE_LIVRAISON} WHERE ${ou} LIMIT 1`, params);
   if (!c) return null;
   const lignes = await sql('SELECT * FROM boutique_commande_lignes WHERE commande_id = ? ORDER BY id', [c.id]);
   return {
@@ -229,7 +247,16 @@ async function chargerCommande(where, params) {
     reference: c.reference,
     code: c.code,
     type: c.type,
-    statut: c.statut,
+    statut: c.statut_reel,
+    mode_livraison: c.mode_livraison,
+    adresse: c.adresse,
+    frais_livraison: nombre(c.frais_livraison),
+    a_payer: nombre(c.total_final) + nombre(c.frais_livraison),
+    motif: c.motif_reel,
+    livreur: c.livreur || null,
+    date_livraison: c.date_livraison || null,
+    livraison_numero: c.livraison_numero || null,
+    compte_client_id: c.compte_client_id,
     client_nom: c.client_nom,
     client_telephone: c.client_telephone,
     note_client: c.note_client,
@@ -253,6 +280,7 @@ exports.voirCommande = async (req, res) => {
     const c = await chargerCommande('code = ?', [req.params.code]);
     if (!c) return res.status(404).json({ message: 'Commande introuvable. Vérifiez le lien reçu.' });
     delete c.id;
+    delete c.compte_client_id;
     res.json(c);
   } catch (e) {
     res.status(500).json({ message: 'Impossible de charger la commande.', erreur: e.message });
@@ -266,12 +294,13 @@ exports.listerCommandes = async (req, res) => {
   try {
     const params = [req.utilisateur.boutique_id];
     let filtre = '';
-    if (req.query.statut) { filtre = ' AND c.statut = ?'; params.push(req.query.statut); }
+    if (req.query.statut === 'a_confirmer') filtre = ` AND (${STATUT_SQL}) IN ('nouvelle','en_discussion')`;
+    else if (req.query.statut) { filtre = ` AND (${STATUT_SQL}) = ?`; params.push(req.query.statut); }
     const liste = await sql(
-      `SELECT c.id, c.reference, c.code, c.type, c.statut, c.client_nom, c.client_telephone, c.total_initial, c.remise, c.total_final, c.created_at,
+      `SELECT c.id, c.reference, c.code, c.type, ${STATUT_SQL} AS statut, c.mode_livraison, c.adresse, c.client_nom, c.client_telephone, c.total_initial, c.remise, c.total_final, c.created_at,
               (SELECT COUNT(*) FROM boutique_commande_lignes l WHERE l.commande_id = c.id) AS nb_lignes,
               (SELECT l.image FROM boutique_commande_lignes l WHERE l.commande_id = c.id ORDER BY l.id LIMIT 1) AS image
-       FROM boutique_commandes c WHERE c.boutique_id = ?${filtre} ORDER BY c.created_at DESC LIMIT 300`, params);
+       FROM boutique_commandes c ${JOINTURE_LIVRAISON} WHERE c.boutique_id = ?${filtre} ORDER BY c.created_at DESC LIMIT 300`, params);
     res.json(liste.map((c) => ({ ...c, total_initial: nombre(c.total_initial), remise: nombre(c.remise), total_final: nombre(c.total_final), nb_lignes: Number(c.nb_lignes) })));
   } catch (e) {
     res.status(500).json({ message: 'Impossible de charger les commandes.', erreur: e.message });
@@ -316,8 +345,8 @@ exports.modifierCommande = async (req, res) => {
     remise = Math.min(Math.max(0, remise), sousTotal);
     const totalFinal = sousTotal - remise;
 
-    const statuts = ['nouvelle', 'en_discussion', 'validee', 'livree', 'annulee'];
-    const statut = statuts.includes(req.body.statut) ? req.body.statut : c.statut;
+    // Le statut se change avec « Accepter » / « Refuser », puis dans la page Livraisons de Koloun Gestion
+    const statut = (await sql('SELECT statut FROM boutique_commandes WHERE id = ?', [c.id]))[0].statut;
     const note = req.body.note_vendeur !== undefined ? (req.body.note_vendeur ? String(req.body.note_vendeur).slice(0, 500) : null) : c.note_vendeur;
 
     await exec(
@@ -431,4 +460,101 @@ exports.reglerProduit = async (req, res) => {
   } catch (e) {
     res.status(500).json({ message: "Le produit n'a pas pu être modifié.", erreur: e.message });
   }
+};
+
+
+// ------------------------------------------------------------ CIRCUIT COMMANDE → LIVRAISON
+
+const nouvelleErreur = (code, message) => Object.assign(new Error(message), { code });
+const repondre = (res, e, defaut) => res.status(e.code && e.code < 500 ? e.code : 500).json({ message: e.code ? e.message : defaut, erreur: e.code ? undefined : e.message });
+const jourValide = (j) => (/^\d{4}-\d{2}-\d{2}$/.test(j || '') ? j : new Date().toISOString().slice(0, 10));
+
+// GET /api/boutique/admin/a-confirmer → commandes en attente, avec leurs articles (section « À confirmer » de Livraisons)
+exports.aConfirmer = async (req, res) => {
+  try {
+    const ids = await sql(
+      `SELECT c.id FROM boutique_commandes c ${JOINTURE_LIVRAISON}
+       WHERE c.boutique_id = ? AND (${STATUT_SQL}) IN ('nouvelle','en_discussion') ORDER BY c.created_at ASC LIMIT 100`, [req.utilisateur.boutique_id]);
+    const liste = [];
+    for (const { id } of ids) liste.push(await chargerCommande('id = ?', [id]));
+    res.json(liste);
+  } catch (e) { repondre(res, e, 'Impossible de charger les commandes à confirmer.'); }
+};
+
+// POST /api/boutique/admin/commandes/:id/accepter { frais_livraison, livreur, date_livraison, remise }
+// → la commande devient une livraison dans Koloun Gestion ; le client la voit « Expédiée » (ou « Prête » pour un retrait)
+exports.accepter = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const c = await chargerCommande('id = ? AND boutique_id = ?', [req.params.id, req.utilisateur.boutique_id]);
+    if (!c) throw nouvelleErreur(404, 'Commande introuvable.');
+    if (!['nouvelle', 'en_discussion'].includes(c.statut)) throw nouvelleErreur(409, 'Cette commande a déjà été traitée.');
+
+    const sousTotal = c.lignes.reduce((s, l) => s + (l.prix_negocie ?? l.prix_unitaire) * l.quantite, 0);
+    const remise = req.body.remise !== undefined && req.body.remise !== '' ? Math.min(Math.max(0, Math.round(Number(req.body.remise) || 0)), sousTotal) : c.remise;
+    const totalFinal = sousTotal - remise;
+    const frais = c.mode_livraison === 'retrait' ? 0 : Math.max(0, Math.round(Number(req.body.frais_livraison) || 0));
+    const date = jourValide(req.body.date_livraison);
+    const boutique_id = req.utilisateur.boutique_id;
+
+    const prefixe = `LIV-${date.replace(/-/g, '')}-`;
+    const nb = await Livraison.count({ where: { boutique_id, numero: { [require('sequelize').Op.like]: `${prefixe}%` } }, transaction: t });
+    const articles = c.lignes.map((l) => ({ designation: `${l.nom}${l.quantite > 1 ? ` ×${l.quantite}` : ''}`.slice(0, 200), taille: l.taille ? String(l.taille).slice(0, 30) : null, image: l.image }));
+    const livraison = await Livraison.create({
+      boutique_id,
+      numero: `${prefixe}${String(nb + 1).padStart(3, '0')}`,
+      date_livraison: date,
+      client_nom: c.client_nom,
+      client_telephone: c.client_telephone,
+      adresse: c.mode_livraison === 'retrait' ? 'Retrait en boutique (Lambanyi)' : c.adresse,
+      article: articles.map((a) => a.designation).join(' + ').slice(0, 200),
+      taille: articles.map((a) => a.taille).filter(Boolean).join(', ').slice(0, 30) || null,
+      image: articles.find((a) => a.image)?.image || null,
+      montant_livraison: frais,
+      montant_a_encaisser: totalFinal + frais,
+      livreur: req.body.livreur ? String(req.body.livreur).slice(0, 100) : null,
+      note: `Commande en ligne ${c.reference}${c.note_client ? ` — ${c.note_client}` : ''}`.slice(0, 255),
+      cree_par: req.utilisateur.id,
+    }, { transaction: t });
+    await LivraisonArticle.bulkCreate(articles.map((a) => ({ ...a, livraison_id: livraison.id })), { transaction: t });
+    await sequelize.query(
+      "UPDATE boutique_commandes SET statut = 'validee', livraison_id = ?, frais_livraison = ?, remise = ?, total_final = ?, modifie_par = ? WHERE id = ?",
+      { replacements: [livraison.id, frais, remise, totalFinal, req.utilisateur.id, c.id], transaction: t });
+    await t.commit();
+
+    Notification.create({ boutique_id, utilisateur_id: req.utilisateur.id, type: 'livraison_nouvelle',
+      message: `Commande en ligne ${c.reference} acceptée → livraison ${livraison.numero} pour ${c.client_nom}.`.slice(0, 255) }).catch(() => {});
+    res.json(await chargerCommande('id = ?', [c.id]));
+  } catch (e) {
+    await t.rollback().catch(() => {});
+    repondre(res, e, "La commande n'a pas pu être acceptée.");
+  }
+};
+
+// POST /api/boutique/admin/commandes/:id/refuser { motif }
+exports.refuser = async (req, res) => {
+  try {
+    const motif = String(req.body.motif || '').trim();
+    if (!motif) throw nouvelleErreur(400, 'Indiquez le motif du refus : le client le verra.');
+    const c = await chargerCommande('id = ? AND boutique_id = ?', [req.params.id, req.utilisateur.boutique_id]);
+    if (!c) throw nouvelleErreur(404, 'Commande introuvable.');
+    if (!['nouvelle', 'en_discussion'].includes(c.statut)) throw nouvelleErreur(409, 'Cette commande a déjà été traitée.');
+    await exec("UPDATE boutique_commandes SET statut = 'annulee', motif = ?, modifie_par = ? WHERE id = ?", [motif.slice(0, 255), req.utilisateur.id, c.id]);
+    res.json(await chargerCommande('id = ?', [c.id]));
+  } catch (e) { repondre(res, e, "La commande n'a pas pu être refusée."); }
+};
+
+// POST /api/boutique/compte/commandes/:code/annuler → le client annule tant que la boutique n'a pas accepté
+exports.annulerParClient = async (req, res) => {
+  try {
+    const c = await chargerCommande('code = ?', [req.params.code]);
+    if (!c || c.compte_client_id !== req.compte.compte_id) throw nouvelleErreur(404, 'Commande introuvable.');
+    if (!['nouvelle', 'en_discussion'].includes(c.statut)) throw nouvelleErreur(409, 'La boutique a déjà accepté cette commande : écrivez-lui avec « Discuter ».');
+    await exec("UPDATE boutique_commandes SET statut = 'annulee', motif = 'Annulée par le client' WHERE id = ?", [c.id]);
+    Notification.create({ boutique_id: BOUTIQUE_ID, type: 'commande_boutique', message: `Commande en ligne ${c.reference} annulée par ${c.client_nom}.`.slice(0, 255) }).catch(() => {});
+    const maj = await chargerCommande('id = ?', [c.id]);
+    delete maj.id;
+    delete maj.compte_client_id;
+    res.json(maj);
+  } catch (e) { repondre(res, e, "La commande n'a pas pu être annulée."); }
 };

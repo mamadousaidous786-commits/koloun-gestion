@@ -32,9 +32,13 @@ router.post('/auth/connexion', compte.connexion);
 router.post('/auth/google', compte.google);
 router.get('/compte', compte.exigerCompte, compte.monCompte);
 router.put('/compte', compte.exigerCompte, compte.modifierCompte);
+router.post('/compte/commandes/:code/annuler', compte.exigerCompte, ctrl.annulerParClient);
 
 // ---- Vendeur : tout utilisateur connecté à Koloun Gestion ----
 router.get('/admin/commandes', verifierToken, ctrl.listerCommandes);
+router.get('/admin/a-confirmer', verifierToken, ctrl.aConfirmer);
+router.post('/admin/commandes/:id/accepter', verifierToken, ctrl.accepter);
+router.post('/admin/commandes/:id/refuser', verifierToken, ctrl.refuser);
 router.get('/admin/commandes/:id', verifierToken, ctrl.obtenirCommande);
 router.patch('/admin/commandes/:id', verifierToken, ctrl.modifierCommande);
 router.get('/admin/speciales', verifierToken, ctrl.listerSpecialesAdmin);

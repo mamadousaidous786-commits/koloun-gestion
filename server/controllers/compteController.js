@@ -17,6 +17,12 @@ const { trouverOuCreerClient } = require('../utils/clients');
 const BOUTIQUE_ID = Number(process.env.BOUTIQUE_PUBLIQUE_ID || 1);
 const CLE_CLIENTS = () => `${process.env.JWT_SECRET}::koloun-boutique-clients`;
 const SELECT = { type: sequelize.QueryTypes.SELECT };
+// Même règle de statut que les commandes (la livraison dans Koloun Gestion fait foi)
+const JOINTURE_LIVRAISON = 'LEFT JOIN livraisons lv ON lv.id = c.livraison_id';
+const STATUT_SQL = `CASE WHEN c.livraison_id IS NOT NULL AND lv.id IS NULL THEN 'annulee'
+  WHEN lv.statut = 'livree' THEN 'livree' WHEN lv.statut = 'annulee' THEN 'annulee'
+  WHEN lv.statut = 'en_cours' THEN 'validee' ELSE c.statut END`;
+const MOTIF_SQL_C = `COALESCE(lv.motif, CASE WHEN c.livraison_id IS NOT NULL AND lv.id IS NULL THEN 'Livraison supprimée par la boutique' END, c.motif)`;
 const sql = (t, r = []) => sequelize.query(t, { ...SELECT, replacements: r });
 const exec = (t, r = []) => sequelize.query(t, { replacements: r });
 
@@ -193,11 +199,11 @@ exports.monCompte = async (req, res) => {
     const [c] = await sql('SELECT * FROM comptes_clients WHERE id = ? AND actif = 1', [req.compte.compte_id]);
     if (!c) return res.status(401).json({ message: 'Compte introuvable. Reconnectez-vous.' });
     const commandes = await sql(
-      `SELECT c.reference, c.code, c.statut, c.total_initial, c.total_final, c.created_at,
+      `SELECT c.reference, c.code, ${STATUT_SQL} AS statut, c.mode_livraison, ${MOTIF_SQL_C} AS motif, c.frais_livraison, c.total_initial, c.total_final, c.created_at,
               (SELECT COALESCE(SUM(l.quantite),0) FROM boutique_commande_lignes l WHERE l.commande_id = c.id) AS nb,
               (SELECT l.image FROM boutique_commande_lignes l WHERE l.commande_id = c.id ORDER BY l.id LIMIT 1) AS image
-       FROM boutique_commandes c WHERE c.compte_client_id = ? ORDER BY c.created_at DESC LIMIT 100`, [c.id]);
-    res.json({ compte: publique(c), commandes: commandes.map((x) => ({ ...x, nb: Number(x.nb), total: Math.round(Number(x.total_final)), total_initial: Math.round(Number(x.total_initial)), date: x.created_at })) });
+       FROM boutique_commandes c ${JOINTURE_LIVRAISON} WHERE c.compte_client_id = ? ORDER BY c.created_at DESC LIMIT 100`, [c.id]);
+    res.json({ compte: publique(c), commandes: commandes.map((x) => ({ ...x, nb: Number(x.nb), total: Math.round(Number(x.total_final)), frais_livraison: Math.round(Number(x.frais_livraison)), total_initial: Math.round(Number(x.total_initial)), date: x.created_at })) });
   } catch (e) { repondreErreur(res, e, 'Impossible de charger votre compte.'); }
 };
 
@@ -248,8 +254,8 @@ exports.listerClients = async (req, res) => {
 exports.commandesClient = async (req, res) => {
   try {
     const liste = await sql(
-      `SELECT c.id, c.reference, c.code, c.statut, c.total_final, c.created_at FROM boutique_commandes c
-       JOIN comptes_clients cc ON cc.id = c.compte_client_id
+      `SELECT c.id, c.reference, c.code, ${STATUT_SQL} AS statut, c.total_final, c.created_at FROM boutique_commandes c
+       JOIN comptes_clients cc ON cc.id = c.compte_client_id ${JOINTURE_LIVRAISON}
        WHERE cc.id = ? AND cc.boutique_id = ? ORDER BY c.created_at DESC`, [req.params.id, req.utilisateur.boutique_id]);
     res.json(liste.map((x) => ({ ...x, total_final: Math.round(Number(x.total_final)) })));
   } catch (e) { repondreErreur(res, e, 'Impossible de charger les commandes.'); }
