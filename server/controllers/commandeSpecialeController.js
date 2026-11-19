@@ -13,6 +13,32 @@ const INCLUS = [
 const ORDRE_SUIVI = [[{ model: SuiviCommandeSpeciale, as: 'suivi' }, 'id', 'ASC']];
 const nouveauCode = () => crypto.randomBytes(6).toString('hex').slice(0, 10);
 
+// Lignes envoyées par le formulaire : articles = JSON [{ nom, taille, image? }] ; la photo de la ligne i est le fichier « image_i ».
+// Nom et taille sont facultatifs ; une ligne sans nom, taille ni photo est ignorée.
+function lireArticles(req) {
+  let lignes = [];
+  try { lignes = JSON.parse(req.body.articles || '[]'); } catch { lignes = []; }
+  if (!Array.isArray(lignes)) lignes = [];
+  const fichiers = {};
+  (req.files || []).forEach((f) => { fichiers[f.fieldname] = f.path; });
+  const articles = lignes.map((l, i) => ({
+    nom: String(l?.nom || '').trim().slice(0, 150),
+    taille: String(l?.taille || '').trim().slice(0, 50),
+    image: fichiers[`image_${i}`] || (typeof l?.image === 'string' && l.image ? l.image : null),
+  })).filter((a) => a.nom || a.taille || a.image).slice(0, 30);
+  // Ancien formulaire : une seule photo envoyée sous le nom « image »
+  if (!articles.length && fichiers.image) articles.push({ nom: '', taille: '', image: fichiers.image });
+  return articles;
+}
+
+// Libellé court de la commande (liste, reçu, messages WhatsApp)
+function resume(articles, saisi) {
+  if (saisi && saisi.trim()) return saisi.trim().slice(0, 200);
+  const noms = articles.map((a) => a.nom).filter(Boolean);
+  if (noms.length) return noms.join(' + ').slice(0, 200);
+  return articles.length > 1 ? `${articles.length} articles (voir photos)` : 'Article (voir photo)';
+}
+
 const nombre = (v) => (v === undefined || v === null || v === '' ? 0 : Number(v));
 
 async function charger(id, boutique_id) {
@@ -44,7 +70,8 @@ exports.creer = async (req, res) => {
     const prix_total = nombre(req.body.prix_total);
     const acompte = nombre(req.body.acompte); // facultatif : 0 si non renseigné
 
-    if (!article || !article.trim()) return res.status(400).json({ message: "L'article demandé est obligatoire." });
+    const articles = lireArticles(req);
+    if (!articles.length && !(article || '').trim()) return res.status(400).json({ message: 'Ajoutez au moins une photo ou le nom d\'un article.' });
     if (!(prix_total > 0)) return res.status(400).json({ message: 'Le prix total doit être supérieur à 0.' });
     if (acompte < 0) return res.status(400).json({ message: "L'avance ne peut pas être négative." });
     if (acompte > prix_total) return res.status(400).json({ message: "L'avance ne peut pas dépasser le prix total." });
@@ -57,9 +84,10 @@ exports.creer = async (req, res) => {
       client_id: client.id,
       client_nom: client.nom,
       client_telephone: client_telephone || client.telephone || null,
-      article: article.trim(),
+      article: resume(articles, article),
       details,
-      image: req.file ? req.file.path : null,
+      articles,
+      image: articles.find((a) => a.image)?.image || null,
       prix_total,
       date_livraison_prevue: date_livraison_prevue || null,
       observation,
@@ -98,7 +126,15 @@ exports.modifier = async (req, res) => {
       if (!(prix > 0)) return res.status(400).json({ message: 'Le prix total doit être supérieur à 0.' });
       champs.prix_total = prix;
     }
-    if (req.file) champs.image = req.file.path;
+    if (req.body.articles !== undefined) {
+      const articles = lireArticles(req);
+      champs.articles = articles;
+      champs.image = articles.find((a) => a.image)?.image || null;
+      if (!(req.body.article || '').trim()) champs.article = resume(articles);
+    } else {
+      const photo = (req.files || [])[0];
+      if (photo) champs.image = photo.path;
+    }
     await commande.update(champs);
 
     res.json(avecSoldeCommande(await charger(commande.id, boutique_id)));

@@ -10,7 +10,17 @@ const CommandeSpeciale = sequelize.define('CommandeSpeciale', {
   client_telephone: DataTypes.STRING(50),
   article: { type: DataTypes.STRING(200), allowNull: false },
   details: DataTypes.TEXT,
-  image: DataTypes.STRING(255),
+  image: DataTypes.STRING(255), // 1re photo (aperçu, suivi, reçu)
+  // Toutes les photos de la commande : [{ nom, taille, image }] (nom et taille facultatifs)
+  articles: {
+    type: DataTypes.TEXT,
+    get() {
+      const brut = this.getDataValue('articles');
+      if (!brut) return [];
+      try { const v = JSON.parse(brut); return Array.isArray(v) ? v : []; } catch { return []; }
+    },
+    set(v) { this.setDataValue('articles', v && v.length ? JSON.stringify(v) : null); },
+  },
   prix_total: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
   date_livraison_prevue: DataTypes.DATEONLY,
   statut: {

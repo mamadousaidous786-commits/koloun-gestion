@@ -117,6 +117,11 @@ module.exports = async function migrerBoutique(sequelize) {
     });
   }
 
+  // Commandes spéciales : plusieurs photos, chacune avec un nom et une taille facultatifs
+  await etape('commandes_speciales.articles', async () => {
+    if (!(await colonneExiste('commandes_speciales', 'articles'))) await q('ALTER TABLE commandes_speciales ADD COLUMN articles TEXT NULL');
+  });
+
   // Réservations (Koloun Gestion) : articles mis de côté pour un client, payés et remis le jour du retrait
   await etape('reservations', () => q(`CREATE TABLE IF NOT EXISTS reservations (
     id INT AUTO_INCREMENT PRIMARY KEY,

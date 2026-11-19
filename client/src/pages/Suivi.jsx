@@ -44,6 +44,17 @@ export default function Suivi() {
               </div>
             </div>
 
+            {(d.photos || []).length > 1 && (
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {d.photos.map((p, i) => (
+                  <figure key={i} className="min-w-0">
+                    <div className="aspect-square rounded-lg bg-slate-100 overflow-hidden"><img src={urlFichier(p.image, 300)} alt={p.legende || ''} loading="lazy" className="w-full h-full object-cover" /></div>
+                    {p.legende && <figcaption className="text-[11px] text-slate-500 mt-1 truncate">{p.legende}</figcaption>}
+                  </figure>
+                ))}
+              </div>
+            )}
+
             {annulee ? (
               <p className="mt-5 text-sm text-center text-red-600 bg-red-50 rounded-xl py-3">Cette commande a été annulée.</p>
             ) : (

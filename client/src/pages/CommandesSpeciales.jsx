@@ -1,11 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { FiPlus, FiPrinter, FiSearch, FiStar, FiTrash2, FiImage, FiCalendar, FiChevronDown, FiChevronUp, FiLink, FiShoppingBag, FiList } from 'react-icons/fi';
+import { FiPlus, FiPrinter, FiSearch, FiStar, FiTrash2, FiImage, FiCalendar, FiX, FiChevronDown, FiChevronUp, FiLink, FiShoppingBag, FiList } from 'react-icons/fi';
 import EnTete from '../components/EnTete';
 import Modal from '../components/Modal';
 import ChampClient from '../components/ChampClient';
 import BoutonsContact from '../components/BoutonsContact';
 import CatalogueSpecial from '../components/CatalogueSpecial';
+import VisionneusePhotos from '../components/VisionneusePhotos';
+import { compresserImage } from '../utils/images';
 import {
   listerCommandesSpeciales, creerCommandeSpeciale, changerStatutCommandeSpeciale,
   ajouterPaiementCommandeSpeciale, supprimerCommandeSpeciale, recuCommandeSpeciale,
@@ -50,8 +52,24 @@ const MOYENS = [
 const formulaireVide = () => ({
   client: { client_id: '', nom: '', telephone: '' },
   article: '', details: '', prix_total: '', acompte: '', moyen_paiement_id: 3,
-  date_livraison_prevue: '', observation: '', photo: null,
+  date_livraison_prevue: '', observation: '', lignes: [],
 });
+
+// Une ligne = une photo (facultative) avec son nom et sa taille (facultatifs)
+const ligneVide = (photo = null) => ({ cle: Math.random().toString(36).slice(2), photo, nom: '', taille: '' });
+
+// Photos d'une commande (avec leur nom et leur taille) pour la visionneuse
+const photosDe = (c) => {
+  const liste = (c.articles || []).filter((a) => a.image).map((a) => ({ image: a.image, legende: [a.nom, a.taille ? `taille ${a.taille}` : ''].filter(Boolean).join(' — ') || c.article }));
+  return liste.length ? liste : c.image ? [{ image: c.image, legende: c.article }] : [];
+};
+
+// Aperçu d'une photo choisie sur le téléphone (avant l'envoi)
+function Apercu({ fichier }) {
+  const url = useMemo(() => (fichier ? URL.createObjectURL(fichier) : null), [fichier]);
+  useEffect(() => () => url && URL.revokeObjectURL(url), [url]);
+  return url ? <img src={url} alt="" className="w-full h-full object-cover" /> : <FiImage className="text-slate-300" size={20} />;
+}
 
 // Deux onglets : les commandes des clients, et les modèles proposés dans l'application Koloun Boutique
 function Onglets({ onglet, setOnglet }) {
@@ -84,6 +102,14 @@ export default function CommandesSpeciales() {
   const [paiement, setPaiement] = useState(null); // { commande, montant, moyen_paiement_id, note }
   const [ouvertes, setOuvertes] = useState({}); // historique des paiements déplié
   const inputPhoto = useRef(null);
+  const [visionneuse, setVisionneuse] = useState(null); // { photos, depart }
+
+  const ajouterPhotos = (fichiers) => {
+    const nouvelles = Array.from(fichiers || []).map((f) => ligneVide(f));
+    if (nouvelles.length) setFormulaire((f) => ({ ...f, lignes: [...f.lignes, ...nouvelles] }));
+  };
+  const changerLigne = (cle, champ, valeur) => setFormulaire((f) => ({ ...f, lignes: f.lignes.map((l) => (l.cle === cle ? { ...l, [champ]: valeur } : l)) }));
+  const retirerLigne = (cle) => setFormulaire((f) => ({ ...f, lignes: f.lignes.filter((l) => l.cle !== cle) }));
 
   const charger = async () => {
     try {
@@ -103,6 +129,8 @@ export default function CommandesSpeciales() {
 
   const soumettre = async (e) => {
     e.preventDefault();
+    const lignes = formulaire.lignes.filter((l) => l.photo || l.nom.trim() || l.taille.trim());
+    if (!lignes.length && !formulaire.article.trim()) return toast.warn("Ajoutez au moins une photo ou le nom d'un article.");
     setEnregistrement(true);
     try {
       const fd = new FormData();
@@ -118,7 +146,9 @@ export default function CommandesSpeciales() {
       }
       fd.append('date_livraison_prevue', formulaire.date_livraison_prevue);
       fd.append('observation', formulaire.observation);
-      if (formulaire.photo) fd.append('image', formulaire.photo);
+      fd.append('articles', JSON.stringify(lignes.map((l) => ({ nom: l.nom, taille: l.taille }))));
+      const photos = await Promise.all(lignes.map((l) => (l.photo ? compresserImage(l.photo) : null)));
+      photos.forEach((ph, i) => { if (ph) fd.append(`image_${i}`, ph); });
 
       await creerCommandeSpeciale(fd);
       toast.success('Commande spéciale enregistrée.');
@@ -219,9 +249,16 @@ export default function CommandesSpeciales() {
           {commandes.map((c) => (
             <div key={c.id} className="card">
               <div className="flex gap-3">
-                <div className="w-20 h-20 rounded-xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
-                  {c.image ? <img loading="lazy" decoding="async" src={urlFichier(c.image)} alt="" className="w-full h-full object-contain" /> : <FiImage className="text-slate-300" size={24} />}
-                </div>
+                {(() => {
+                  const photos = photosDe(c);
+                  return (
+                    <button type="button" disabled={!photos.length} onClick={() => setVisionneuse({ photos, depart: 0 })} aria-label="Voir les photos"
+                      className="relative w-20 h-20 rounded-xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
+                      {photos.length ? <img loading="lazy" decoding="async" src={urlFichier(photos[0].image)} alt="" className="w-full h-full object-contain" /> : <FiImage className="text-slate-300" size={24} />}
+                      {photos.length > 1 && <span className="absolute bottom-1 right-1 text-[10px] font-semibold text-white bg-slate-900/70 rounded-md px-1.5 py-0.5">+{photos.length - 1}</span>}
+                    </button>
+                  );
+                })()}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -230,6 +267,12 @@ export default function CommandesSpeciales() {
                     </div>
                     <span className={`badge shrink-0 ${STATUTS[c.statut].classe}`}>{STATUTS[c.statut].label}</span>
                   </div>
+                  {(c.articles || []).length > 1 && (
+                    <ul className="text-xs text-slate-600 mt-1 space-y-0.5">
+                      {c.articles.map((a, i) => (a.nom || a.taille) && <li key={i} className="truncate">• {a.nom || `Photo ${i + 1}`}{a.taille ? ` — taille ${a.taille}` : ''}</li>)}
+                    </ul>
+                  )}
+                  {(c.articles || []).length === 1 && c.articles[0].taille && <p className="text-xs text-slate-600 mt-0.5">Taille {c.articles[0].taille}</p>}
                   {c.details && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.details}</p>}
                   {c.date_livraison_prevue && (
                     <p className={`text-xs mt-1 flex items-center gap-1 ${enRetard(c) ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
@@ -325,21 +368,33 @@ export default function CommandesSpeciales() {
             <ChampClient clients={clients} valeur={formulaire.client} onChange={(client) => setFormulaire({ ...formulaire, client })} />
 
             <div>
-              <label className="etiquette">Article demandé</label>
-              <input required className="input-champ" placeholder="Ex : Robe de soirée bleu nuit" value={formulaire.article} onChange={(e) => setFormulaire({ ...formulaire, article: e.target.value })} />
-            </div>
-            <div>
-              <label className="etiquette">Détails (taille, couleur, précisions)</label>
-              <textarea rows={2} className="input-champ" value={formulaire.details} onChange={(e) => setFormulaire({ ...formulaire, details: e.target.value })} />
-            </div>
-
-            <div>
-              <label className="etiquette">Photo de référence (facultatif)</label>
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => inputPhoto.current.click()} className="btn-secondary !py-2 text-xs"><FiImage /> {formulaire.photo ? 'Changer la photo' : 'Ajouter une photo'}</button>
-                {formulaire.photo && <span className="text-xs text-slate-500 truncate">{formulaire.photo.name}</span>}
-                <input ref={inputPhoto} type="file" accept="image/*" className="hidden" onChange={(e) => setFormulaire({ ...formulaire, photo: e.target.files[0] || null })} />
+              <label className="etiquette">Articles demandés (photo, nom et taille facultatifs)</label>
+              {formulaire.lignes.length > 0 && (
+                <ul className="space-y-2 mb-2">
+                  {formulaire.lignes.map((l, i) => (
+                    <li key={l.cle} className="flex items-start gap-2.5 bg-slate-50 rounded-xl p-2">
+                      <label className="w-16 h-16 rounded-lg bg-white ring-1 ring-slate-200 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer" title={l.photo ? 'Changer la photo' : 'Ajouter une photo'}>
+                        <Apercu fichier={l.photo} />
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files[0] && changerLigne(l.cle, 'photo', e.target.files[0])} />
+                      </label>
+                      <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_6rem] gap-2">
+                        <input className="input-champ !px-3" placeholder={`Nom (article ${i + 1})`} value={l.nom} onChange={(e) => changerLigne(l.cle, 'nom', e.target.value)} aria-label={`Nom de l'article ${i + 1}`} />
+                        <input className="input-champ !px-3 max-sm:!w-28" placeholder="Taille" value={l.taille} onChange={(e) => changerLigne(l.cle, 'taille', e.target.value)} aria-label={`Taille de l'article ${i + 1}`} />
+                      </div>
+                      <button type="button" onClick={() => retirerLigne(l.cle)} className="w-9 h-9 mt-0.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-white flex items-center justify-center shrink-0" aria-label={`Retirer l'article ${i + 1}`}><FiX /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => inputPhoto.current.click()} className="btn-secondary !py-2 text-xs"><FiImage /> {formulaire.lignes.length ? 'Ajouter d\'autres photos' : 'Ajouter des photos (plusieurs d\'un coup)'}</button>
+                <button type="button" onClick={() => setFormulaire((f) => ({ ...f, lignes: [...f.lignes, ligneVide()] }))} className="btn-secondary !py-2 text-xs"><FiPlus /> Article sans photo</button>
+                <input ref={inputPhoto} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { ajouterPhotos(e.target.files); e.target.value = ''; }} />
               </div>
+            </div>
+            <div>
+              <label className="etiquette">Détails (couleur, précisions — facultatif)</label>
+              <textarea rows={2} className="input-champ" value={formulaire.details} onChange={(e) => setFormulaire({ ...formulaire, details: e.target.value })} />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -385,6 +440,8 @@ export default function CommandesSpeciales() {
       )}
 
       {/* Encaisser un paiement */}
+      {visionneuse && <VisionneusePhotos photos={visionneuse.photos} depart={visionneuse.depart} onClose={() => setVisionneuse(null)} />}
+
       {paiement && (
         <Modal titre={`Encaisser — ${paiement.commande.client_nom}`} onClose={() => setPaiement(null)}>
           <form onSubmit={encaisser} className="space-y-4">

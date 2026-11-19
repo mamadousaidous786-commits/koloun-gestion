@@ -26,6 +26,7 @@ exports.consulter = async (req, res) => {
     res.json({
       article: c.article,
       image: c.image,
+      photos: (c.articles || []).filter((a) => a.image).map((a) => ({ image: a.image, legende: [a.nom, a.taille ? `taille ${a.taille}` : ''].filter(Boolean).join(' — ') })),
       client: (c.client_nom || '').split(' ')[0],
       statut: c.statut,
       date_livraison_prevue: c.date_livraison_prevue,
