@@ -4,6 +4,33 @@ import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiImage, FiCopy } from 'react
 import { listerProduits, creerProduit, modifierProduit, supprimerProduit, dupliquerProduit, abonnesArrivages } from '../services/produitService';
 import { useAuth } from '../context/AuthContext';
 import { urlFichier } from '../utils/fichiers';
+import { lireSaisieTailles, fusionnerTailles } from '../utils/saisieTailles';
+
+// Saisie rapide sous chaque photo : « 30-34:1, 36:2, 40 » remplit toutes les lignes d'un coup
+function SaisieRapide({ onRemplir }) {
+  const [texte, setTexte] = useState('');
+  const [erreur, setErreur] = useState('');
+  const remplir = () => {
+    if (!texte.trim()) return;
+    const { tailles, erreurs } = lireSaisieTailles(texte);
+    if (!tailles.length) { setErreur(erreurs.length ? `Non compris : ${erreurs.join(', ')}. Exemple : 30-34:1, 36:2` : 'Exemple : 30-34:1, 36:2'); return; }
+    onRemplir(tailles);
+    setTexte('');
+    setErreur(erreurs.length ? `Ignoré (non compris) : ${erreurs.join(', ')}` : '');
+    toast.success(`${tailles.length} taille${tailles.length > 1 ? 's' : ''} remplie${tailles.length > 1 ? 's' : ''}`, { autoClose: 1500 });
+  };
+  return (
+    <div className="mb-1.5">
+      <div className="flex gap-2">
+        <input className="input-champ py-1 text-sm flex-1 min-w-0" placeholder="30-34:1, 36:2" value={texte} aria-label="Saisie rapide des tailles"
+          onChange={(e) => { setTexte(e.target.value); setErreur(''); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); remplir(); } }} />
+        <button type="button" onClick={remplir} className="px-3 rounded-lg bg-or-500/15 text-or-300 text-xs font-semibold whitespace-nowrap hover:bg-or-500/25">Remplir</button>
+      </div>
+      {erreur && <p className="text-[11px] text-red-500 mt-1">{erreur}</p>}
+    </div>
+  );
+}
 
 function formulaireVide() {
   return {
@@ -102,6 +129,14 @@ export default function Produits() {
       ),
     }));
   };
+  // Saisie rapide : fusionne les tailles tapées avec celles de la photo
+  const remplirExistante = (varianteId, tailles) => setFormulaire((f) => ({
+    ...f, variantesExistantes: f.variantesExistantes.map((v) => (v.id !== varianteId ? v : { ...v, tailles: fusionnerTailles(v.tailles, tailles) })),
+  }));
+  const remplirNouvelle = (index, tailles) => setFormulaire((f) => ({
+    ...f, nouvellesVariantes: f.nouvellesVariantes.map((v, i) => (i !== index ? v : { ...v, tailles: fusionnerTailles(v.tailles, tailles) })),
+  }));
+
   const ajouterTailleExistante = (varianteId) => {
     setFormulaire((f) => ({
       ...f,
@@ -315,7 +350,8 @@ export default function Produits() {
               <textarea placeholder="Description" className="input-champ" rows={2} value={formulaire.description} onChange={(e) => setFormulaire({ ...formulaire, description: e.target.value })} />
 
               <div>
-                <p className="text-sm text-charbon-100/70 mb-2">Photos — chaque photo a ses propres tailles et quantités</p>
+                <p className="text-sm text-charbon-100/70">Photos — chaque photo a ses propres tailles et quantités</p>
+                <p className="text-xs text-charbon-100/50 mb-2">Astuce : sous chaque photo, tapez <b className="text-or-300 font-semibold">30-34:1, 36:2, 40</b> puis « Remplir » (de 30 à 34 une pièce, 36 deux pièces, 40 une pièce). Marche aussi avec S-XL:2.</p>
 
                 {/* Variantes déjà en base */}
                 <div className="space-y-3">
@@ -327,7 +363,8 @@ export default function Produits() {
                           <FiX size={12} />
                         </button>
                       </div>
-                      <div className="flex-1 space-y-1">
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <SaisieRapide onRemplir={(tailles) => remplirExistante(v.id, tailles)} />
                         {v.tailles.map((t, index) => (
                           <div key={index} className="flex gap-2">
                             <input placeholder="Taille" className="input-champ py-1 text-sm flex-1" value={t.taille} onChange={(e) => modifierTailleExistante(v.id, index, 'taille', e.target.value)} />
@@ -351,7 +388,8 @@ export default function Produits() {
                           <FiX size={12} />
                         </button>
                       </div>
-                      <div className="flex-1 space-y-1">
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <SaisieRapide onRemplir={(tailles) => remplirNouvelle(index, tailles)} />
                         {v.tailles.map((t, indexTaille) => (
                           <div key={indexTaille} className="flex gap-2">
                             <input placeholder="Taille" className="input-champ py-1 text-sm flex-1" value={t.taille} onChange={(e) => modifierTailleNouvelle(index, indexTaille, 'taille', e.target.value)} />
