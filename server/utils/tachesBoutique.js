@@ -140,6 +140,10 @@ async function relaisAgent() {
 
 function planifierTaches() {
   setInterval(() => relaisAgent(), 60 * 1000);
+  // Photos envoyées dans les discussions : effacées de Cloudinary / du serveur au bout de 24 h
+  const nettoyerPhotos = () => require('./chat').supprimerPhotosExpirees().catch((e) => console.error('Photos de discussion :', e.message));
+  setTimeout(nettoyerPhotos, 60 * 1000);
+  setInterval(nettoyerPhotos, 30 * 60 * 1000);
   const lancer = () => verifierReservations({ forcer: true }).catch((e) => console.error('Tâches boutique :', e.message));
   setTimeout(lancer, 20 * 1000);
   setInterval(lancer, 10 * 60 * 1000);

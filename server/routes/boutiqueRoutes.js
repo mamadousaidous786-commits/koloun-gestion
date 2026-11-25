@@ -50,6 +50,7 @@ router.post('/compte/reservations/:numero/annuler', compte.exigerCompte, resaCli
 // Discussion avec la boutique (dans l'application)
 router.get('/chat', compte.exigerCompte, chatCtrl.clientLire);
 router.get('/chat/non-lus', compte.exigerCompte, chatCtrl.clientNonLus);
+router.get('/chat/flux', chatCtrl.jetonDansAdresse, compte.exigerCompte, chatCtrl.clientFlux); // direct
 router.post('/chat', compte.exigerCompte, upload.single('image'), chatCtrl.clientEnvoyer);
 // « Prévenez-moi quand ma taille revient »
 router.get('/compte/alertes', compte.exigerCompte, resaClient.mesAlertes);

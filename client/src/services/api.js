@@ -50,7 +50,8 @@ const getReseau = (url, config, k, enArrierePlan = false) => {
 
 const originalGet = api.get.bind(api);
 api.get = (url, config = {}) => {
-  if (config.responseType === 'blob' || url.startsWith('/auth') || url.startsWith('/sauvegarde') || url.startsWith('/recus')) {
+  // /chat : jamais de mémoire (les messages doivent arriver tout de suite)
+  if (config.responseType === 'blob' || url.startsWith('/auth') || url.startsWith('/sauvegarde') || url.startsWith('/recus') || url.startsWith('/chat')) {
     return originalGet(url, config);
   }
   const k = cle(url, config.params);

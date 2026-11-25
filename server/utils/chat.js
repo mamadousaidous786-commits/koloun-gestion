@@ -7,7 +7,12 @@
 const webpush = require('web-push');
 const sequelize = require('../config/database');
 const PushAbonnement = require('../models/PushAbonnement');
+const { EventEmitter } = require('events');
 const { actif, envoyerAlerte } = require('./push');
+
+// Direct : chaque nouveau message est signalé tout de suite aux écrans ouverts (client et Gestion)
+const bus = new EventEmitter();
+bus.setMaxListeners(0);
 
 const BOUTIQUE_ID = Number(process.env.BOUTIQUE_PUBLIQUE_ID || 1);
 const SELECT = { type: sequelize.QueryTypes.SELECT };
@@ -67,6 +72,7 @@ async function ajouter(conv, { auteur, utilisateur_id = null, type = 'texte', te
       non_lu_client = non_lu_client + ?, non_lu_vendeur = non_lu_vendeur + ? WHERE id = ?`,
   [resume, auteur, pourClient ? 1 : 0, pourClient ? 0 : 1, conv.id]);
 
+  bus.emit('message', { id, conversation_id: conv.id, compte_client_id: conv.compte_client_id, boutique_id: conv.boutique_id, auteur });
   if (silencieux) return id; // déjà signalé autrement (ex. : la commande a sa propre alerte dans Gestion)
   if (pourClient) {
     prevenirClient(conv.compte_client_id, { titre: auteur === 'agent' ? 'Koloun Luxure' : 'Koloun Luxure vous a répondu', corps: resume }).catch(() => {});
@@ -107,7 +113,7 @@ async function enrichir(messages, urlImage = (x) => x) {
     const d = m.donnees || {};
     if (m.type === 'commande' || m.type === 'prix') return { ...m, commande: parCommande.get(d.commande_id) || null };
     if (m.type === 'reservation') return { ...m, reservation: parResa.get(d.reservation_id) || null };
-    if (m.type === 'image') return { ...m, donnees: { ...d, url: urlImage(d.url) } };
+    if (m.type === 'image') return { ...m, donnees: d.expiree ? d : { ...d, url: urlImage(d.url) } };
     if (m.type === 'produit') return { ...m, donnees: { ...d, image: urlImage(d.image) } };
     if (m.type === 'panier') return { ...m, donnees: { ...d, lignes: (d.lignes || []).map((l) => ({ ...l, image: urlImage(l.image) })) } };
     return m;
@@ -132,4 +138,53 @@ const messageReservation = (compteId, r) => publierPourCompte(compteId, { auteur
 const messagePrix = (compteId, c, ancien, nouveau, utilisateurId) => publierPourCompte(compteId, { auteur: 'vendeur', utilisateur_id: utilisateurId, type: 'prix', donnees: { commande_id: c.id, reference: c.reference, ancien, nouveau } });
 const messageSysteme = (compteId, texte) => publierPourCompte(compteId, { auteur: 'systeme', type: 'texte', texte });
 
-module.exports = { conversationDuCompte, ajouter, enrichir, lireMessages, messageCommande, messageReservation, messagePrix, messageSysteme, prevenirClient, apercu, BOUTIQUE_ID };
+module.exports = { bus, conversationDuCompte, ajouter, enrichir, lireMessages, messageCommande, messageReservation, messagePrix, messageSysteme, prevenirClient, apercu, BOUTIQUE_ID };
+
+// ------------------------------------------------------------ Photos de discussion : supprimées au bout de 24 h
+// Seules les photos envoyées par le client ou par la boutique dans la discussion sont concernées
+// (pas les photos des produits que l'agent IA montre). Le message reste, marqué « photo expirée ».
+const path = require('path');
+const fs = require('fs');
+
+function idCloudinary(url) {
+  // https://res.cloudinary.com/<compte>/image/upload/v1712345678/koloun/abc123.jpg → koloun/abc123
+  const m = String(url).match(/\/upload\/(?:[^/]*,[^/]*\/)*(?:v\d+\/)?(.+?)(?:\.[a-z0-9]+)?$/i);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+async function supprimerFichier(url) {
+  if (!url) return;
+  if (/res\.cloudinary\.com/.test(url)) {
+    const id = idCloudinary(url);
+    if (!id || !process.env.CLOUDINARY_API_SECRET) return;
+    const cloudinary = require('cloudinary').v2;
+    cloudinary.config({ cloud_name: process.env.CLOUDINARY_CLOUD_NAME, api_key: process.env.CLOUDINARY_API_KEY, api_secret: process.env.CLOUDINARY_API_SECRET });
+    const r = await cloudinary.uploader.destroy(id, { invalidate: true });
+    if (r?.result !== 'ok' && r?.result !== 'not found') throw new Error(`Cloudinary : ${r?.result}`);
+    return;
+  }
+  if (String(url).startsWith('/uploads/')) {
+    const dossier = path.join(__dirname, '..', 'uploads');
+    const fichier = path.join(dossier, path.basename(url));
+    if (fichier.startsWith(dossier)) await fs.promises.unlink(fichier).catch((e) => { if (e.code !== 'ENOENT') throw e; });
+  }
+}
+
+async function supprimerPhotosExpirees() {
+  const photos = await sql(`SELECT id, donnees FROM chat_messages
+    WHERE type = 'image' AND auteur IN ('client','vendeur') AND created_at <= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+      AND donnees NOT LIKE '%"expiree":true%' LIMIT 200`);
+  let n = 0;
+  for (const p of photos) {
+    let d = {}; try { d = JSON.parse(p.donnees || '{}'); } catch { /* ignoré */ }
+    try {
+      await supprimerFichier(d.url);
+      await exec('UPDATE chat_messages SET donnees = ? WHERE id = ?', [JSON.stringify({ expiree: true }), p.id]);
+      n += 1;
+    } catch (e) { console.error('Photo de discussion non supprimée :', e.message); }
+  }
+  return n;
+}
+
+module.exports.supprimerPhotosExpirees = supprimerPhotosExpirees;
+module.exports.idCloudinary = idCloudinary;

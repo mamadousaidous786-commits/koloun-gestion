@@ -28,8 +28,10 @@ export default function Messages() {
   const chargerListe = () => api.get('/chat', { params: { q: recherche.trim() || undefined } }).then((r) => setListe(r.data)).catch(() => setListe((l) => l || []));
   useEffect(() => {
     const m = setTimeout(chargerListe, recherche ? 300 : 0);
-    const minuteur = setInterval(() => document.visibilityState === 'visible' && chargerListe(), 8000);
-    return () => { clearTimeout(m); clearInterval(minuteur); };
+    const minuteur = setInterval(() => document.visibilityState === 'visible' && chargerListe(), 30000);
+    const surMessage = () => chargerListe();
+    window.addEventListener('kl-chat-message', surMessage);
+    return () => { clearTimeout(m); clearInterval(minuteur); window.removeEventListener('kl-chat-message', surMessage); };
   }, [recherche]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ouvrir = (id) => { const p = new URLSearchParams(params); if (id) p.set('c', id); else p.delete('c'); setParams(p); };
@@ -93,15 +95,22 @@ function Conversation({ id, onRetour, onLu }) {
     setClient(r.data.client);
     if (!r.data.messages.length && !tout) return;
     dernier.current = r.data.messages.at(-1)?.id || dernier.current;
-    setMessages((avant) => (tout || !avant ? r.data.messages : [...avant, ...r.data.messages.filter((m) => !avant.some((a) => a.id === m.id))]));
+    setMessages((avant) => {
+      if (tout || !avant) return r.data.messages;
+      const base = r.data.messages.some((m) => m.auteur === 'vendeur') ? avant.filter((a) => !a.temporaire) : avant;
+      return [...base, ...r.data.messages.filter((m) => !base.some((a) => a.id === m.id))];
+    });
     window.dispatchEvent(new Event('kl-messages-lus'));
     onLu?.();
   };
 
   useEffect(() => {
     charger(true).catch(() => toast.error('Impossible de charger la conversation.'));
-    const minuteur = setInterval(() => document.visibilityState === 'visible' && charger().catch(() => {}), 4000);
-    return () => clearInterval(minuteur);
+    // Direct : le message du client arrive par la connexion ouverte de l'application → affiché aussitôt
+    const surMessage = (e) => { if (e.detail?.conversation_id === id) charger().catch(() => {}); };
+    window.addEventListener('kl-chat-message', surMessage);
+    const secours = setInterval(() => document.visibilityState === 'visible' && charger().catch(() => {}), 15000);
+    return () => { clearInterval(secours); window.removeEventListener('kl-chat-message', surMessage); };
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => { fin.current?.scrollIntoView({ block: 'end' }); }, [messages?.length]);
   const zone = useRef(null);
@@ -117,10 +126,15 @@ function Conversation({ id, onRetour, onLu }) {
 
   const envoyer = async (e) => {
     e?.preventDefault();
-    if (!texte.trim() || envoi) return;
-    setEnvoi(true);
-    try { await api.post(`/chat/${id}`, { texte: texte.trim() }); setTexte(''); await charger(); } catch (err) { toast.error(err.response?.data?.message || "Message non envoyé."); }
-    setEnvoi(false);
+    const t = texte.trim();
+    if (!t) return;
+    // Affiché tout de suite ; remplacé par le vrai message dès que le serveur l'a enregistré
+    const temp = { id: `t${Date.now()}`, temporaire: true, auteur: 'vendeur', type: 'texte', texte: t, created_at: new Date().toISOString() };
+    setMessages((m) => [...(m || []), temp]); setTexte('');
+    try { await api.post(`/chat/${id}`, { texte: t }); await charger(); } catch (err) {
+      setMessages((m) => (m || []).filter((x) => x.id !== temp.id)); setTexte(t);
+      toast.error(err.response?.data?.message || 'Message non envoyé.');
+    }
   };
   const envoyerPhoto = async (f) => {
     if (!f) return;
@@ -153,12 +167,12 @@ function Conversation({ id, onRetour, onLu }) {
       </div>
 
       <form onSubmit={envoyer} className="flex items-end gap-2 p-2 sm:p-3 bg-white border-t border-slate-200" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
-        <button type="button" onClick={() => fichier.current?.click()} disabled={envoi} className="p-2.5 text-slate-500 hover:text-slate-800" aria-label="Envoyer une photo"><FiImage size={20} /></button>
+        <button type="button" onClick={() => fichier.current?.click()} disabled={envoi} className="p-2.5 text-slate-500 hover:text-slate-800" aria-label="Envoyer une photo (effacée après 24 h)" title="Photo (effacée après 24 h)"><FiImage size={20} /></button>
         <input ref={fichier} type="file" accept="image/*" hidden onChange={(e) => envoyerPhoto(e.target.files?.[0])} />
         <textarea value={texte} onChange={(e) => setTexte(e.target.value)} rows={1} placeholder="Votre réponse…"
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && window.matchMedia('(pointer: fine)').matches) envoyer(e); }}
           className="input-champ flex-1 !rounded-2xl resize-none max-h-32" />
-        <button type="submit" disabled={envoi || !texte.trim()} className="btn-primary !px-3.5 !py-2.5" aria-label="Envoyer"><FiSend /></button>
+        <button type="submit" disabled={!texte.trim()} className="btn-primary !px-3.5 !py-2.5" aria-label="Envoyer"><FiSend /></button>
       </form>
 
       {prix && <ModifierPrix commande={prix} onClose={() => setPrix(null)} onFait={() => { setPrix(null); rafraichir(); }} />}
@@ -172,7 +186,8 @@ function Bulle({ m, onPrix, onConfirmer }) {
   const d = m.donnees || {};
   const carte = ['produit', 'panier', 'commande', 'prix', 'reservation'].includes(m.type);
   let contenu;
-  if (m.type === 'image') contenu = <><a href={d.url} target="_blank" rel="noreferrer"><img src={d.url} alt="" className="rounded-lg max-h-72 max-w-full" loading="lazy" /></a>{m.texte && <p className="mt-1 whitespace-pre-wrap">{m.texte}</p>}</>;
+  if (m.type === 'image' && d.expiree) contenu = <p className="italic text-slate-500 text-sm">📷 Photo effacée (24 h)</p>;
+  else if (m.type === 'image') contenu = <><a href={d.url} target="_blank" rel="noreferrer"><img src={d.url} alt="" className="rounded-lg max-h-72 max-w-full" loading="lazy" /></a>{m.texte && <p className="mt-1 whitespace-pre-wrap">{m.texte}</p>}</>;
   else if (m.type === 'produit') contenu = (
     <div className="flex gap-3 items-center">
       {d.image && <img src={d.image} alt="" className="w-16 h-16 rounded-lg object-cover shrink-0" />}
@@ -221,7 +236,7 @@ function Bulle({ m, onPrix, onConfirmer }) {
       <div className={`relative rounded-2xl px-3 pt-2 pb-5 shadow-sm text-[15px] break-words ${carte ? 'w-[min(320px,85%)]' : 'max-w-[82%]'} ${client ? 'bg-white text-slate-800 rounded-bl-md' : 'bg-[#d9fdd3] text-slate-900 rounded-br-md'}`}>
         {m.auteur === 'agent' && <p className="text-[11px] font-semibold text-violet-700 mb-0.5">Agent IA</p>}
         {contenu}
-        <span className="absolute right-2.5 bottom-1 text-[10px] text-slate-400">{heure(m.created_at)}</span>
+        <span className="absolute right-2.5 bottom-1 text-[10px] text-slate-400">{m.temporaire ? 'envoi…' : heure(m.created_at)}</span>
       </div>
     </div>
   );

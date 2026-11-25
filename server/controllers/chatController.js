@@ -151,3 +151,32 @@ exports.envoyer = async (req, res) => {
     res.status(201).json({ id });
   } catch (e) { repondre(res, e, "Le message n'est pas parti. Réessayez."); }
 };
+
+// ------------------------------------------------------------ DIRECT (Server-Sent Events)
+// L'écran garde une connexion ouverte ; le serveur y pousse un signal dès qu'un message arrive.
+// L'écran va alors chercher le message : il s'affiche en moins d'une seconde.
+function ouvrirFlux(req, res, garder) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform', // no-transform : pas de compression (sinon le direct est retenu)
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('retry: 3000\n\n');
+  const envoyer = (e) => { if (garder(e)) res.write(`data: ${JSON.stringify({ conversation_id: e.conversation_id, id: e.id, auteur: e.auteur })}\n\n`); };
+  chat.bus.on('message', envoyer);
+  const battement = setInterval(() => res.write(': ok\n\n'), 20000); // garde la connexion ouverte
+  req.on('close', () => { clearInterval(battement); chat.bus.off('message', envoyer); });
+}
+
+// GET /api/boutique/chat/flux?token=…  (client)
+exports.clientFlux = (req, res) => ouvrirFlux(req, res, (e) => e.compte_client_id === req.compte.compte_id && e.auteur !== 'client');
+
+// GET /api/chat/flux?token=…  (Gestion)
+exports.flux = (req, res) => ouvrirFlux(req, res, (e) => e.boutique_id === req.utilisateur.boutique_id);
+
+// EventSource ne sait pas envoyer d'en-tête : le jeton passe dans l'adresse
+exports.jetonDansAdresse = (req, res, next) => {
+  if (req.query.token && !req.headers.authorization) req.headers.authorization = `Bearer ${req.query.token}`;
+  next();
+};

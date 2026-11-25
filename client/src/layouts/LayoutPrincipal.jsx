@@ -70,10 +70,22 @@ export default function LayoutPrincipal() {
   useEffect(() => {
     const lire = () => { if (document.visibilityState === 'visible') api.get('/chat/non-lus').then((r) => setMessagesNonLus(r.data.n)).catch(() => {}); };
     lire();
-    const minuteur = setInterval(lire, 20000);
+    const minuteur = setInterval(lire, 60000);
+    // Direct : chaque message client est signalé dès qu'il arrive (une seule connexion pour toute l'application)
+    let flux = null;
+    const token = localStorage.getItem('koloun_token');
+    if (token && typeof EventSource !== 'undefined') {
+      const base = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
+      flux = new EventSource(`${base}/chat/flux?token=${encodeURIComponent(token)}`);
+      flux.onmessage = (ev) => {
+        let detail = {}; try { detail = JSON.parse(ev.data); } catch { /* ignoré */ }
+        window.dispatchEvent(new CustomEvent('kl-chat-message', { detail }));
+        if (detail.auteur === 'client') lire();
+      };
+    }
     window.addEventListener('kl-messages-lus', lire);
     document.addEventListener('visibilitychange', lire);
-    return () => { clearInterval(minuteur); window.removeEventListener('kl-messages-lus', lire); document.removeEventListener('visibilitychange', lire); };
+    return () => { flux?.close(); clearInterval(minuteur); window.removeEventListener('kl-messages-lus', lire); document.removeEventListener('visibilitychange', lire); };
   }, []);
 
   const lien = ({ isActive }) =>
