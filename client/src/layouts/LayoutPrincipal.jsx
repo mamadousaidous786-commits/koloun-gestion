@@ -2,7 +2,7 @@ import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   FiGrid, FiBox, FiShoppingCart, FiBookmark, FiUsers, FiTruck, FiBarChart2, FiBell, FiLogOut, FiDollarSign,
-  FiMenu, FiX, FiStar, FiUser, FiCreditCard, FiFileText, FiLock, FiDatabase, FiTrendingDown,
+  FiMenu, FiX, FiStar, FiUser, FiCreditCard, FiFileText, FiLock, FiDatabase, FiTrendingDown, FiMessageCircle,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import logo from '../assets/logo.jpeg';
@@ -111,6 +111,7 @@ export default function LayoutPrincipal() {
             <Lien to="/ventes" icone={<FiShoppingCart />}>Ventes</Lien>
             <Lien to="/livraisons" icone={<FiTruck />}>Livraisons du jour</Lien>
             <Lien to="/reservations" icone={<FiBookmark />}>Réservations</Lien>
+            <Lien to="/agent" icone={<FiMessageCircle />}>Agent IA</Lien>
             <Lien to="/produits" icone={<FiBox />}>Produits</Lien>
             {estAdmin && <Lien to="/commandes-speciales" icone={<FiStar />}>Commandes spéciales</Lien>}
             <Lien to="/clients" icone={<FiUser />}>Clients</Lien>
