@@ -52,6 +52,7 @@ async function verifierReservations({ forcer = false } = {}) {
         await Notification.create({ boutique_id: r.boutique_id, type: 'reservation_expiree',
           message: `Réservation ${r.numero} de ${String(r.client_nom).slice(0, 40)} annulée : délai de ${JOURS} jours dépassé. Les articles sont remis en vente.`.slice(0, 255) }, { transaction: t });
         await t.commit();
+        if (r.compte_client_id) require('./chat').messageSysteme(r.compte_client_id, `⌛ Réservation ${r.numero} annulée : le délai de ${JOURS} jours est dépassé. Les articles sont remis en vente.`).catch(() => {});
       } catch (e) {
         await t.rollback().catch(() => {});
         console.error('Réservation expirée :', e.message);
@@ -99,13 +100,52 @@ async function prevenirTaillesRevenues() {
   return envoyes;
 }
 
+// L'agent IA prend le relais quand un client attend depuis 5 minutes sans réponse de la boutique
+// (seulement si la clé Anthropic est installée ; il ne répond qu'une fois par message du client)
+let relaisEnCours = false;
+async function relaisAgent() {
+  if (relaisEnCours) return;
+  const agent = require('./agentKoloun');
+  if (!agent.actif()) return;
+  relaisEnCours = true;
+  try {
+    const chat = require('./chat');
+    const attente = await sql(`SELECT c.*, k.nom, k.telephone FROM chat_conversations c JOIN comptes_clients k ON k.id = c.compte_client_id
+      WHERE c.dernier_auteur = 'client' AND c.dernier_message_at <= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+        AND c.dernier_message_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) LIMIT 10`);
+    for (const conv of attente) {
+      // Messages du client depuis la dernière réponse (boutique ou agent)
+      const [derniere] = await sql("SELECT COALESCE(MAX(id), 0) AS id FROM chat_messages WHERE conversation_id = ? AND auteur IN ('vendeur','agent')", [conv.id]);
+      const nouveaux = await sql("SELECT type, texte, donnees FROM chat_messages WHERE conversation_id = ? AND auteur = 'client' AND id > ? ORDER BY id", [conv.id, derniere.id]);
+      const texte = nouveaux.map((m) => {
+        let d = {}; try { d = JSON.parse(m.donnees || '{}'); } catch { /* ignoré */ }
+        if (m.type === 'produit') return `[Le client montre l'article « ${d.nom} »${d.taille ? ` taille ${d.taille}` : ''}, ${d.prix} GNF, id ${d.produit_id}]`;
+        if (m.type === 'panier') return `[Panier du client : ${(d.lignes || []).map((l) => `${l.nom} T.${l.taille} ×${l.quantite}`).join(', ')}]`;
+        if (m.type === 'image') return `[Le client envoie une photo]${m.texte ? ` ${m.texte}` : ''}`;
+        if (m.type === 'commande') return `[Le client vient de passer la commande ${d.reference}]`;
+        if (m.type === 'reservation') return `[Le client vient de réserver ${d.numero}]`;
+        return m.texte;
+      }).filter(Boolean).join('\n');
+      if (!texte) { await exec("UPDATE chat_conversations SET dernier_auteur = 'attente' WHERE id = ?", [conv.id]); continue; }
+      // Marqué tout de suite pour ne pas répondre deux fois
+      await exec("UPDATE chat_conversations SET dernier_auteur = 'attente' WHERE id = ? AND dernier_auteur = 'client'", [conv.id]);
+      const r = await agent.repondre({ canal: 'appli', identifiant: `compte-${conv.compte_client_id}`, texte, nom: conv.nom, telephone: conv.telephone });
+      for (const t of r.textes || []) await chat.ajouter(conv, { auteur: 'agent', type: 'texte', texte: t });
+      for (const im of r.images || []) await chat.ajouter(conv, { auteur: 'agent', type: 'image', texte: im.legende || null, donnees: { url: im.url } });
+    }
+  } catch (e) {
+    console.error('Relais agent :', e.message);
+  } finally { relaisEnCours = false; }
+}
+
 function planifierTaches() {
+  setInterval(() => relaisAgent(), 60 * 1000);
   const lancer = () => verifierReservations({ forcer: true }).catch((e) => console.error('Tâches boutique :', e.message));
   setTimeout(lancer, 20 * 1000);
   setInterval(lancer, 10 * 60 * 1000);
 }
 
-module.exports = { verifierReservations, prevenirTaillesRevenues, planifierTaches };
+module.exports = { verifierReservations, prevenirTaillesRevenues, planifierTaches, relaisAgent };
 
 // Après chaque modification réussie dans Gestion (produit, stock, vente annulée, réservation annulée…),
 // on regarde dans les 5 secondes si une taille attendue est revenue : le client est prévenu presque tout de suite.

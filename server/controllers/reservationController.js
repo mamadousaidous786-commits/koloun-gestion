@@ -239,6 +239,7 @@ exports.confirmer = async (req, res) => {
       { replacements: [req.utilisateur.id, resa.id], transaction: t });
     await t.commit();
     const [maj] = await charger(boutique_id, { id: resa.id });
+    if (resa.compte_client_id) require('../utils/chat').messageSysteme(resa.compte_client_id, `✅ Réservation ${resa.numero} confirmée : vos articles sont mis de côté. À venir chercher avant le ${new Date(maj.date_expiration).toLocaleDateString('fr-FR')}.`).catch(() => {});
     res.json(maj);
   } catch (e) {
     if (t) await t.rollback().catch(() => {});
@@ -278,6 +279,7 @@ exports.annuler = async (req, res) => {
       { replacements: [(req.body.motif || '').trim().slice(0, 255) || null, req.utilisateur.id, resa.id], transaction: t });
     await t.commit();
     const [maj] = await charger(boutique_id, { id: resa.id });
+    if (resa.compte_client_id) require('../utils/chat').messageSysteme(resa.compte_client_id, `❌ Réservation ${resa.numero} annulée${maj.motif ? ` : ${maj.motif}` : ''}.`).catch(() => {});
     res.json(maj);
   } catch (e) {
     if (t) await t.rollback().catch(() => {});

@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const sequelize = require('../config/database');
 const { Notification, Livraison, LivraisonArticle } = require('../models');
 const { lireCompte } = require('./compteController');
+const chat = require('../utils/chat'); // la commande apparaît aussi dans la discussion client ↔ boutique
 
 const BOUTIQUE_ID = Number(process.env.BOUTIQUE_PUBLIQUE_ID || 1);
 const SELECT = { type: sequelize.QueryTypes.SELECT };
@@ -229,6 +230,7 @@ exports.creerCommande = async (req, res) => {
       message: `Commande en ligne à confirmer ${reference} — ${String(client_nom).trim()} (${total.toLocaleString('fr-FR')} GNF, ${mode === 'retrait' ? 'retrait en boutique' : `livraison : ${adresse}`})`.slice(0, 255),
     }).catch(() => {});
 
+    chat.messageCommande(compte.compte_id, { id, reference }).catch(() => {});
     res.status(201).json({ reference, code, total, type });
   } catch (e) {
     await t.rollback().catch(() => {});
@@ -256,6 +258,7 @@ async function chargerCommande(where, params) {
     livreur: c.livreur || null,
     date_livraison: c.date_livraison || null,
     livraison_numero: c.livraison_numero || null,
+    livraison_id: c.livraison_id || null,
     compte_client_id: c.compte_client_id,
     client_nom: c.client_nom,
     client_telephone: c.client_telephone,
@@ -327,6 +330,9 @@ exports.modifierCommande = async (req, res) => {
   try {
     const c = await chargerCommande('id = ? AND boutique_id = ?', [req.params.id, req.utilisateur.boutique_id]);
     if (!c) return res.status(404).json({ message: 'Commande introuvable.' });
+    // Le prix peut changer jusqu'à la livraison (pas après : la vente et le reçu sont faits)
+    if (['livree', 'annulee'].includes(c.statut)) return res.status(409).json({ message: c.statut === 'livree' ? 'Commande déjà livrée : le prix ne peut plus changer.' : 'Commande annulée.' });
+    const ancienTotal = c.total_final;
 
     const nouvellesLignes = Array.isArray(req.body.lignes) ? req.body.lignes : [];
     for (const nl of nouvellesLignes) {
@@ -352,6 +358,9 @@ exports.modifierCommande = async (req, res) => {
     await exec(
       'UPDATE boutique_commandes SET remise = ?, total_final = ?, statut = ?, note_vendeur = ?, modifie_par = ? WHERE id = ?',
       [remise, totalFinal, statut, note, req.utilisateur.id, c.id]);
+    // Déjà acceptée : la livraison encaisse le nouveau montant
+    if (c.livraison_id) await exec('UPDATE livraisons SET montant_a_encaisser = ? WHERE id = ?', [totalFinal + c.frais_livraison, c.livraison_id]).catch(() => {});
+    if (totalFinal !== ancienTotal && c.compte_client_id) chat.messagePrix(c.compte_client_id, c, ancienTotal, totalFinal, req.utilisateur.id).catch(() => {});
 
     // Commande spéciale validée → elle apparaît dans « Commandes spéciales » de Koloun Gestion, avec son lien de suivi
     if (statut === 'validee' && !c.commande_speciale_id && c.lignes.some((l) => l.source === 'speciale')) {
@@ -522,6 +531,7 @@ exports.accepter = async (req, res) => {
       { replacements: [livraison.id, frais, remise, totalFinal, req.utilisateur.id, c.id], transaction: t });
     await t.commit();
 
+    if (c.compte_client_id) chat.messageSysteme(c.compte_client_id, `✅ Commande ${c.reference} confirmée par la boutique${c.mode_livraison === 'retrait' ? '' : ` · livraison prévue le ${new Date(date).toLocaleDateString('fr-FR')}`}.`).catch(() => {});
     Notification.create({ boutique_id, utilisateur_id: req.utilisateur.id, type: 'livraison_nouvelle',
       message: `Commande en ligne ${c.reference} acceptée → livraison ${livraison.numero} pour ${c.client_nom}.`.slice(0, 255) }).catch(() => {});
     res.json(await chargerCommande('id = ?', [c.id]));
@@ -540,6 +550,7 @@ exports.refuser = async (req, res) => {
     if (!c) throw nouvelleErreur(404, 'Commande introuvable.');
     if (!['nouvelle', 'en_discussion'].includes(c.statut)) throw nouvelleErreur(409, 'Cette commande a déjà été traitée.');
     await exec("UPDATE boutique_commandes SET statut = 'annulee', motif = ?, modifie_par = ? WHERE id = ?", [motif.slice(0, 255), req.utilisateur.id, c.id]);
+    if (c.compte_client_id) chat.messageSysteme(c.compte_client_id, `❌ Commande ${c.reference} refusée : ${motif.slice(0, 200)}`).catch(() => {});
     res.json(await chargerCommande('id = ?', [c.id]));
   } catch (e) { repondre(res, e, "La commande n'a pas pu être refusée."); }
 };

@@ -2,7 +2,7 @@ import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   FiGrid, FiBox, FiShoppingCart, FiBookmark, FiUsers, FiTruck, FiBarChart2, FiBell, FiLogOut, FiDollarSign,
-  FiMenu, FiX, FiStar, FiUser, FiCreditCard, FiFileText, FiLock, FiDatabase, FiTrendingDown, FiMessageCircle,
+  FiMenu, FiX, FiStar, FiUser, FiCreditCard, FiFileText, FiLock, FiDatabase, FiTrendingDown, FiMessageCircle, FiMessageSquare,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import logo from '../assets/logo.jpeg';
@@ -10,7 +10,7 @@ import ErreurLimite from '../components/ErreurLimite';
 import BoutonInstaller from '../components/BoutonInstaller';
 import BoutonAlertes from '../components/BoutonAlertes';
 import { resynchroniserAlertes } from '../utils/pwa';
-import { prechargerDonnees } from '../services/api';
+import api, { prechargerDonnees } from '../services/api';
 
 export default function LayoutPrincipal() {
   const { utilisateur, deconnexion, estAdmin } = useAuth();
@@ -65,6 +65,17 @@ export default function LayoutPrincipal() {
   const seDeconnecter = () => { deconnexion(); navigate('/connexion', { replace: true }); };
   const fermerMenu = () => setMenuOuvert(false);
 
+  // Messages des clients non lus (pastille rouge dans le menu et sur l'en-tête mobile)
+  const [messagesNonLus, setMessagesNonLus] = useState(0);
+  useEffect(() => {
+    const lire = () => { if (document.visibilityState === 'visible') api.get('/chat/non-lus').then((r) => setMessagesNonLus(r.data.n)).catch(() => {}); };
+    lire();
+    const minuteur = setInterval(lire, 20000);
+    window.addEventListener('kl-messages-lus', lire);
+    document.addEventListener('visibilitychange', lire);
+    return () => { clearInterval(minuteur); window.removeEventListener('kl-messages-lus', lire); document.removeEventListener('visibilitychange', lire); };
+  }, []);
+
   const lien = ({ isActive }) =>
     `group flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition ${
       isActive
@@ -79,9 +90,10 @@ export default function LayoutPrincipal() {
     </div>
   );
 
-  const Lien = ({ to, icone, children }) => (
+  const Lien = ({ to, icone, children, pastille = 0 }) => (
     <NavLink to={to} className={lien} onClick={fermerMenu}>
       <span className="text-base opacity-90">{icone}</span> {children}
+      {pastille > 0 && <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center">{pastille}</span>}
     </NavLink>
   );
 
@@ -109,6 +121,7 @@ export default function LayoutPrincipal() {
           <Section titre="Boutique">
             <Lien to="/tableau-de-bord" icone={<FiGrid />}>Tableau de bord</Lien>
             <Lien to="/ventes" icone={<FiShoppingCart />}>Ventes</Lien>
+            <Lien to="/messages" icone={<FiMessageSquare />} pastille={messagesNonLus}>Messages clients</Lien>
             <Lien to="/livraisons" icone={<FiTruck />}>Livraisons du jour</Lien>
             <Lien to="/reservations" icone={<FiBookmark />}>Réservations</Lien>
             <Lien to="/agent" icone={<FiMessageCircle />}>Agent IA</Lien>
@@ -156,7 +169,7 @@ export default function LayoutPrincipal() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Barre du haut sur mobile */}
         <header className="md:hidden flex items-center justify-between px-4 py-3 bg-marine-800 sticky top-0 z-30 shadow-md">
-          <button onClick={() => setMenuOuvert(true)} className="text-white p-1"><FiMenu size={22} /></button>
+          <button onClick={() => setMenuOuvert(true)} className="relative text-white p-1" aria-label="Menu"><FiMenu size={22} />{messagesNonLus > 0 && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-marine-800" />}</button>
           <span className="text-white font-semibold text-sm">Koloun Luxure</span>
           <img src={logo} alt="" className="w-8 h-8 object-cover rounded-full ring-2 ring-white/20" />
         </header>

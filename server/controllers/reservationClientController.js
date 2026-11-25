@@ -97,6 +97,7 @@ exports.reserver = async (req, res) => {
     }
     await Notification.create({ boutique_id: BOUTIQUE_ID, type: 'reservation_en_ligne', message: `Nouvelle réservation en ligne ${numero} : ${String(c.nom).slice(0, 40)}, ${gnf(somme)}. À confirmer dans Réservations.`.slice(0, 255) }, { transaction: t });
     await t.commit();
+    require('../utils/chat').messageReservation(c.id, { id: resaId, numero }).catch(() => {});
     res.status(201).json({ numero, total: somme, compte: compteMaj ? publique(compteMaj) : undefined });
   } catch (e) {
     if (t) await t.rollback().catch(() => {});

@@ -240,4 +240,30 @@ module.exports = async function migrerBoutique(sequelize) {
     UNIQUE KEY uniq_alerte (produit_taille_id, compte_client_id),
     KEY idx_attente (statut, produit_taille_id)
   )`));
+
+  // Discussion client ↔ vendeur dans l'application (texte, photos, cartes produit / commande / réservation)
+  await etape('chat_conversations', () => q(`CREATE TABLE IF NOT EXISTS chat_conversations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    compte_client_id INT NOT NULL,
+    apercu VARCHAR(200) NULL,
+    dernier_message_at DATETIME NULL,
+    dernier_auteur VARCHAR(10) NULL,
+    non_lu_vendeur INT NOT NULL DEFAULT 0,
+    non_lu_client INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_chat_compte (boutique_id, compte_client_id),
+    KEY idx_chat_recent (boutique_id, dernier_message_at)
+  )`));
+  await etape('chat_messages', () => q(`CREATE TABLE IF NOT EXISTS chat_messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    conversation_id INT NOT NULL,
+    auteur ENUM('client','vendeur','agent','systeme') NOT NULL,
+    utilisateur_id INT NULL,
+    type ENUM('texte','image','produit','panier','commande','reservation','prix') NOT NULL DEFAULT 'texte',
+    texte TEXT NULL,
+    donnees TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_chat_msg (conversation_id, id)
+  )`));
 };

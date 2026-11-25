@@ -3,6 +3,7 @@ const router = express.Router();
 const ctrl = require('../controllers/boutiqueController');
 const compte = require('../controllers/compteController');
 const resaClient = require('../controllers/reservationClientController');
+const chatCtrl = require('../controllers/chatController');
 const notif = require('../controllers/notificationsClientsController');
 const { verifierToken, autoriserRoles } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -46,6 +47,10 @@ router.post('/compte/commandes/:code/annuler', compte.exigerCompte, ctrl.annuler
 // Réservations faites par le client (arrivent dans Gestion → Réservations, « À confirmer »)
 router.post('/compte/reservations', compte.exigerCompte, resaClient.reserver);
 router.post('/compte/reservations/:numero/annuler', compte.exigerCompte, resaClient.annuler);
+// Discussion avec la boutique (dans l'application)
+router.get('/chat', compte.exigerCompte, chatCtrl.clientLire);
+router.get('/chat/non-lus', compte.exigerCompte, chatCtrl.clientNonLus);
+router.post('/chat', compte.exigerCompte, upload.single('image'), chatCtrl.clientEnvoyer);
 // « Prévenez-moi quand ma taille revient »
 router.get('/compte/alertes', compte.exigerCompte, resaClient.mesAlertes);
 router.post('/compte/alertes', compte.exigerCompte, resaClient.creerAlerte);
