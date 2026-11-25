@@ -20,7 +20,7 @@ exports.abonner = async (req, res) => {
     const compte = await Promise.resolve(lireCompte(req)).catch(() => null);
     const donnees = {
       boutique_id: BOUTIQUE_ID,
-      utilisateur_id: compte?.id || null, // compte client (si connecté), jamais un utilisateur de Gestion
+      utilisateur_id: compte?.compte_id || compte?.id || null, // compte client (si connecté), jamais un utilisateur de Gestion
       role: ROLE_CLIENT,
       endpoint_hash: hash(endpoint),
       endpoint,

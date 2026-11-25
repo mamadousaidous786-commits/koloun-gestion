@@ -18,6 +18,7 @@ const pushRoutes = require('./routes/pushRoutes');
 const suiviRoutes = require('./routes/suiviRoutes');
 const livraisonRoutes = require('./routes/livraisonRoutes');
 const reservationRoutes = require('./routes/reservationRoutes'); // articles réservés, payés au retrait
+const agentRoutes = require('./routes/agentRoutes'); // agent IA (test, commandes transmises)
 const statistiqueRoutes = require('./routes/statistiqueRoutes');
 const utilisateurRoutes = require('./routes/utilisateurRoutes');
 const fournisseurRoutes = require('./routes/fournisseurRoutes');
@@ -42,6 +43,7 @@ app.set('trust proxy', 1); // derrière le proxy de Render : adresses https corr
 app.use(compression()); // réponses 5 à 10 fois plus légères
 app.use(cors());
 app.use(express.json());
+app.use('/api', require('./utils/tachesBoutique').surveillerStock); // taille revenue en stock → clients prévenus
 app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'production') app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { maxAge: '30d', immutable: true }));
@@ -56,6 +58,7 @@ app.use('/api/groupes-commande', groupeCommandeRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/livraisons', livraisonRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/agent', agentRoutes);
 app.use('/api/suivi', suiviRoutes); // public : le client suit sa commande sans compte
 app.use('/api/boutique', boutiqueRoutes); // Koloun Boutique : public + espace vendeur (avant la route '/api' des fournisseurs)
 app.use('/api/statistiques', statistiqueRoutes);
@@ -242,6 +245,7 @@ async function demarrerServeur() {
     // Garde la connexion à la base active (pas de 1ère requête lente)
     setInterval(() => sequelize.query('SELECT 1').catch(() => {}), 4 * 60 * 1000);
     require('./utils/nettoyage').planifierNettoyage(); // supprime les livraisons de plus de 2 mois
+    require('./utils/tachesBoutique').planifierTaches(); // réservations : rappel J-1 et délai de 7 jours ; tailles revenues
 
     app.listen(PORT, () => {
       console.log(`🚀 Serveur Koloun Luxure démarré sur http://localhost:${PORT}`);

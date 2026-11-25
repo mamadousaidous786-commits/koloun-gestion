@@ -12,6 +12,10 @@ const { trouverOuCreerClient } = require('../utils/clients');
 const { numeroRecu, moyenValide } = require('../utils/venteEnLigne');
 
 const SELECT = { type: sequelize.QueryTypes.SELECT };
+// Délai pour venir chercher une réservation mise de côté (après : annulation automatique, stock remis en vente)
+const JOURS_RESERVATION = Math.max(1, Number(process.env.RESERVATION_JOURS) || 7);
+// Date limite : 7 jours après la confirmation, ou après la date de passage annoncée si elle est plus tardive
+const SQL_EXPIRATION = `DATE_ADD(GREATEST(NOW(), COALESCE(TIMESTAMP(date_retrait_prevue, '23:59:00'), NOW())), INTERVAL ${JOURS_RESERVATION} DAY)`;
 const erreur = (code, message) => Object.assign(new Error(message), { code });
 const repondreErreur = (res, e) => (e.code && e.code < 500
   ? res.status(e.code).json({ message: e.message })
@@ -78,6 +82,7 @@ async function charger(boutique_id, { id, statut, recherche } = {}) {
 
 // GET /api/reservations?statut=en_attente|retiree|annulee|toutes&q=
 exports.lister = async (req, res) => {
+  await require('../utils/tachesBoutique').verifierReservations().catch(() => {}); // délais dépassés : à jour avant d'afficher
   try {
     res.json(await charger(req.utilisateur.boutique_id, { statut: req.query.statut || 'toutes', recherche: (req.query.q || '').trim() }));
   } catch (e) { repondreErreur(res, e); }
@@ -125,11 +130,11 @@ exports.creer = async (req, res) => {
     const nomClient = (client?.nom || client_nom || '').trim().slice(0, 150);
 
     const [resaId] = await sequelize.query(
-      `INSERT INTO reservations (boutique_id, numero, client_id, client_nom, client_telephone, date_retrait_prevue, note, total, cree_par)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO reservations (boutique_id, numero, client_id, client_nom, client_telephone, date_retrait_prevue, note, total, cree_par, date_expiration)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(GREATEST(NOW(), COALESCE(TIMESTAMP(?, '23:59:00'), NOW())), INTERVAL ${JOURS_RESERVATION} DAY))`,
       { replacements: [boutique_id, await numeroReservation(boutique_id, t), client?.id || null, nomClient,
         (client?.telephone || client_telephone || '').trim() || null, date_retrait_prevue || null, (note || '').trim().slice(0, 255) || null,
-        total, req.utilisateur.id], type: sequelize.QueryTypes.INSERT, transaction: t });
+        total, req.utilisateur.id, date_retrait_prevue || null], type: sequelize.QueryTypes.INSERT, transaction: t });
     for (const l of lignes) {
       await sequelize.query(
         'INSERT INTO reservation_articles (reservation_id, produit_taille_id, produit_nom, taille, image, prix_normal, prix, quantite) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -230,7 +235,7 @@ exports.confirmer = async (req, res) => {
     const total = new Map();
     for (const a of articles) if (a.produit_taille_id) total.set(a.produit_taille_id, (total.get(a.produit_taille_id) || 0) + a.quantite);
     await bloquerStock(boutique_id, total, t);
-    await sequelize.query("UPDATE reservations SET statut = 'en_attente', stock_bloque = 1, confirme_par = ?, date_confirmation = NOW() WHERE id = ?",
+    await sequelize.query(`UPDATE reservations SET statut = 'en_attente', stock_bloque = 1, confirme_par = ?, date_confirmation = NOW(), rappel_envoye = 0, date_expiration = ${SQL_EXPIRATION} WHERE id = ?`,
       { replacements: [req.utilisateur.id, resa.id], transaction: t });
     await t.commit();
     const [maj] = await charger(boutique_id, { id: resa.id });
@@ -239,6 +244,20 @@ exports.confirmer = async (req, res) => {
     if (t) await t.rollback().catch(() => {});
     repondreErreur(res, e);
   }
+};
+
+// PUT /api/reservations/:id/prolonger { jours } — le client a appelé : on lui laisse plus de temps
+exports.prolonger = async (req, res) => {
+  try {
+    const boutique_id = req.utilisateur.boutique_id;
+    const jours = Math.min(30, Math.max(1, Math.floor(Number(req.body.jours) || 3)));
+    const [resa] = await sequelize.query('SELECT id, statut FROM reservations WHERE id = ? AND boutique_id = ?', { ...SELECT, replacements: [req.params.id, boutique_id] });
+    if (!resa) throw erreur(404, 'Réservation introuvable.');
+    if (resa.statut !== 'en_attente') throw erreur(400, 'Seule une réservation mise de côté peut être prolongée.');
+    await sequelize.query('UPDATE reservations SET date_expiration = DATE_ADD(GREATEST(NOW(), COALESCE(date_expiration, NOW())), INTERVAL ? DAY), rappel_envoye = 0 WHERE id = ?', { replacements: [jours, resa.id] });
+    const [maj] = await charger(boutique_id, { id: resa.id });
+    res.json(maj);
+  } catch (e) { repondreErreur(res, e); }
 };
 
 exports.annuler = async (req, res) => {
@@ -268,3 +287,4 @@ exports.annuler = async (req, res) => {
 
 module.exports.numeroReservation = numeroReservation;
 module.exports.charger = charger;
+module.exports.JOURS_RESERVATION = JOURS_RESERVATION;

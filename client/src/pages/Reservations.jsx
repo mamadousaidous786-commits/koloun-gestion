@@ -8,7 +8,7 @@ import ChampClient from '../components/ChampClient';
 import { listerProduits } from '../services/produitService';
 import { listerClients } from '../services/clientService';
 import { genererRecu } from '../services/venteService';
-import { listerReservations, creerReservation, retirerReservation, annulerReservation, confirmerReservation } from '../services/reservationService';
+import { listerReservations, creerReservation, retirerReservation, annulerReservation, confirmerReservation, prolongerReservation } from '../services/reservationService';
 import { urlFichier } from '../utils/fichiers';
 import { formaterGNF, formaterDate, lienWhatsApp, lienAppel, aujourdhui } from '../utils/format';
 
@@ -52,6 +52,13 @@ const telLisible = (t) => String(t || '').replace(/^224(?=\d{9}$)/, '');
 export function messageReservation(r) {
   const lignes = r.articles.map((a) => `• ${a.produit_nom} · taille ${a.taille} × ${a.quantite} : ${formaterGNF(a.prix * a.quantite)}`).join('\n');
   return `Bonjour ${r.client_nom} 👋\n\n✅ Votre réservation *${r.numero}* chez Koloun Luxure est confirmée : vos articles sont mis de côté.\n\n${lignes}\n\n*Total à régler au retrait : ${formaterGNF(r.total)}*${r.date_retrait_prevue ? `\nPassage prévu le ${formaterDate(r.date_retrait_prevue)}` : ''}\n\n📍 Boutique Koloun Luxure, Lambanyi (Forage Dadis), Conakry.\nVous recevrez votre reçu de vente au moment du paiement. À bientôt !`;
+}
+
+// Date limite de retrait (annulation automatique après)
+const heuresRestantes = (r) => (r.date_expiration ? (new Date(r.date_expiration) - Date.now()) / 3600000 : null);
+const dateLimite = (d) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+export function messageRappel(r) {
+  return `Bonjour ${r.client_nom} 👋\n\nPetit rappel de Koloun Luxure : vos articles réservés (*${r.numero}*, ${formaterGNF(r.total)}) vous attendent à la boutique de Lambanyi jusqu'au *${dateLimite(r.date_expiration)}*.\n\nPassé ce délai, ils seront remis en vente. Un empêchement ? Répondez-nous, on peut vous laisser quelques jours de plus.`;
 }
 
 async function envoyerRecuWhatsApp(venteId) {
@@ -158,7 +165,7 @@ export default function Reservations() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {liste.map((r) => <CarteReservation key={r.id} r={r} onRetirer={() => setRetrait(r)} onConfirmer={() => confirmer(r)} onAnnuler={() => setAnnulation({ reservation: r, motif: '' })} />)}
+          {liste.map((r) => <CarteReservation key={r.id} r={r} onRetirer={() => setRetrait(r)} onConfirmer={() => confirmer(r)} onProlonger={async (j) => { await prolongerReservation(r.id, j); charger(); }} onAnnuler={() => setAnnulation({ reservation: r, motif: '' })} />)}
         </div>
       )}
 
@@ -203,7 +210,7 @@ export default function Reservations() {
   );
 }
 
-function CarteReservation({ r, onRetirer, onConfirmer, onAnnuler }) {
+function CarteReservation({ r, onRetirer, onConfirmer, onAnnuler, onProlonger }) {
   const [envoi, setEnvoi] = useState(false);
   const s = STATUTS[r.statut];
   return (
@@ -250,6 +257,13 @@ function CarteReservation({ r, onRetirer, onConfirmer, onAnnuler }) {
         )}
         {r.note && <p>Note : {r.note}</p>}
         <p>Réservé le {formaterDate(r.created_at)}{r.source === 'boutique' ? ' depuis Koloun Boutique' : r.cree_par_nom ? ` par ${r.cree_par_nom}` : ''}</p>
+        {r.statut === 'en_attente' && r.date_expiration && (
+          <p className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${heuresRestantes(r) < 24 ? 'text-red-600 font-medium' : 'text-amber-700'}`}>
+            <span>⏳ À venir chercher avant le {dateLimite(r.date_expiration)}{heuresRestantes(r) < 24 ? ' : annulée automatiquement après' : ''}</span>
+            <button type="button" onClick={async () => { try { await onProlonger(3); toast.success('3 jours de plus accordés.'); } catch (e) { toast.error(e.response?.data?.message || 'Impossible de prolonger.'); } }}
+              className="underline text-blue-700 font-medium">+3 jours</button>
+          </p>
+        )}
         {r.statut === 'a_confirmer' && <p className="text-blue-700">Stock pas encore retiré : confirmez pour mettre les articles de côté.</p>}
         {r.statut === 'retiree' && <p className="text-emerald-700">Retiré le {formaterDate(r.date_traitement)} · reçu {r.numero_recu}</p>}
         {r.statut === 'annulee' && <p>Annulée le {formaterDate(r.date_traitement)}{r.motif ? ` : ${r.motif}` : ''}</p>}
@@ -275,11 +289,15 @@ function CarteReservation({ r, onRetirer, onConfirmer, onAnnuler }) {
           </div>
         )}
         {['a_confirmer', 'en_attente'].includes(r.statut) && r.client_telephone && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <a href={lienAppel(r.client_telephone)} className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg px-2.5 py-1.5"><FiPhone size={13} /> Appeler</a>
             {r.statut === 'en_attente' && (
               <a href={lienWhatsApp(r.client_telephone, messageReservation(r))} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2.5 py-1.5"><FaWhatsapp size={14} /> Bon de réservation WhatsApp</a>
+                className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2.5 py-1.5"><FaWhatsapp size={14} /> Bon de réservation</a>
+            )}
+            {r.statut === 'en_attente' && r.date_expiration && (
+              <a href={lienWhatsApp(r.client_telephone, messageRappel(r))} target="_blank" rel="noreferrer"
+                className={`inline-flex items-center gap-1 text-xs font-medium rounded-lg px-2.5 py-1.5 ${heuresRestantes(r) < 24 ? 'text-white bg-emerald-600 hover:bg-emerald-700' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}`}><FaWhatsapp size={14} /> Rappel</a>
             )}
             {r.statut === 'a_confirmer' && (
               <a href={lienWhatsApp(r.client_telephone, `Bonjour ${r.client_nom}, Koloun Luxure a bien reçu votre réservation ${r.numero}. `)} target="_blank" rel="noreferrer"

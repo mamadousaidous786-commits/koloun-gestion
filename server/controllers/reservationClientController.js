@@ -19,7 +19,8 @@ const gnf = (n) => `${Math.round(Number(n) || 0).toLocaleString('fr-FR').replace
 
 // Réservations d'un compte client (pour « Mon compte »)
 async function reservationsDuCompte(compteId) {
-  const liste = await sql(`SELECT id, numero, statut, total, motif, date_retrait_prevue, created_at, date_confirmation, date_traitement
+  await require('../utils/tachesBoutique').verifierReservations().catch(() => {}); // délais dépassés à jour
+  const liste = await sql(`SELECT id, numero, statut, total, motif, date_retrait_prevue, created_at, date_confirmation, date_traitement, date_expiration
     FROM reservations WHERE boutique_id = ? AND compte_client_id = ? ORDER BY created_at DESC LIMIT 50`, [BOUTIQUE_ID, compteId]);
   if (!liste.length) return [];
   const articles = await sql(`SELECT reservation_id, produit_nom, taille, quantite, prix, image FROM reservation_articles
@@ -30,6 +31,7 @@ async function reservationsDuCompte(compteId) {
       numero: r.numero, statut: r.statut, total: Math.round(Number(r.total)), motif: r.motif,
       date: r.created_at, date_retrait_prevue: r.date_retrait_prevue, date_confirmation: r.date_confirmation,
       nb: a.reduce((s, x) => s + x.quantite, 0), image: a[0]?.image || null,
+      date_expiration: r.date_expiration,
       articles: a.map((x) => ({ nom: x.produit_nom, taille: x.taille, quantite: x.quantite, prix: Math.round(Number(x.prix)) })),
     };
   });
@@ -111,4 +113,61 @@ exports.annuler = async (req, res) => {
     await exec("UPDATE reservations SET statut = 'annulee', motif = 'Annulée par le client', date_traitement = NOW() WHERE id = ?", [r.id]);
     res.json({ ok: true });
   } catch (e) { repondre(res, e, "L'annulation n'a pas abouti."); }
+};
+
+// ------------------------------------------------------------ « Prévenez-moi quand ma taille revient »
+async function alertesDuCompte(compteId) {
+  const l = await sql(`SELECT a.produit_taille_id, a.statut, a.created_at, a.date_prevenu, t.taille, t.quantite, p.id AS produit_id, p.nom, p.prix_normal, v.image
+    FROM alertes_tailles a JOIN produit_tailles t ON t.id = a.produit_taille_id JOIN produit_variantes v ON v.id = t.produit_variante_id
+    JOIN produits p ON p.id = v.produit_id
+    WHERE a.compte_client_id = ? AND (a.statut = 'attente' OR a.date_prevenu >= DATE_SUB(NOW(), INTERVAL 14 DAY))
+    ORDER BY a.statut = 'prevenu' DESC, a.created_at DESC LIMIT 50`, [compteId]);
+  return l.map((a) => ({ produit_taille_id: a.produit_taille_id, produit_id: a.produit_id, nom: a.nom, taille: a.taille, image: a.image,
+    prix: Math.round(Number(a.prix_normal)), statut: a.statut, disponible: Number(a.quantite) > 0, date: a.created_at, date_prevenu: a.date_prevenu }));
+}
+exports.alertesDuCompte = alertesDuCompte;
+
+// GET /api/boutique/compte/alertes
+exports.mesAlertes = async (req, res) => {
+  try { res.json(await alertesDuCompte(req.compte.compte_id)); } catch (e) { repondre(res, e, 'Impossible de charger vos alertes.'); }
+};
+
+// POST /api/boutique/compte/alertes { produit_taille_id }
+exports.creerAlerte = async (req, res) => {
+  try {
+    const id = Number(req.body.produit_taille_id);
+    const [t] = await sql(`SELECT t.id, t.quantite, t.taille, p.nom FROM produit_tailles t JOIN produit_variantes v ON v.id = t.produit_variante_id
+      JOIN produits p ON p.id = v.produit_id WHERE t.id = ? AND p.boutique_id = ?`, [id, BOUTIQUE_ID]);
+    if (!t) throw erreur(404, 'Taille introuvable.');
+    if (Number(t.quantite) > 0) throw erreur(409, `La taille ${t.taille} est disponible : vous pouvez la commander dès maintenant.`);
+    const [n] = await sql("SELECT COUNT(*) AS n FROM alertes_tailles WHERE compte_client_id = ? AND statut = 'attente'", [req.compte.compte_id]);
+    if (Number(n.n) >= 30) throw erreur(429, 'Vous attendez déjà 30 tailles. Retirez-en dans votre compte avant d\'en ajouter.');
+    await exec(`INSERT INTO alertes_tailles (boutique_id, produit_taille_id, compte_client_id) VALUES (?, ?, ?)
+      ON DUPLICATE KEY UPDATE statut = 'attente', date_prevenu = NULL, created_at = NOW()`, [BOUTIQUE_ID, id, req.compte.compte_id]);
+    res.status(201).json({ message: `Vous serez prévenu dès que la taille ${t.taille} revient.` });
+  } catch (e) { repondre(res, e, "L'alerte n'a pas pu être enregistrée."); }
+};
+
+// DELETE /api/boutique/compte/alertes/:produit_taille_id
+exports.supprimerAlerte = async (req, res) => {
+  try {
+    await exec('DELETE FROM alertes_tailles WHERE compte_client_id = ? AND produit_taille_id = ?', [req.compte.compte_id, Number(req.params.produit_taille_id)]);
+    res.json({ ok: true });
+  } catch (e) { repondre(res, e, "L'alerte n'a pas pu être retirée."); }
+};
+
+// GET /api/boutique/admin/alertes (Gestion) : tailles demandées par les clients, les plus demandées d'abord
+exports.alertesAdmin = async (req, res) => {
+  try {
+    const l = await sql(`SELECT a.produit_taille_id, t.taille, t.quantite, p.id AS produit_id, p.nom, v.image, c.nom AS client_nom, c.telephone, a.created_at
+      FROM alertes_tailles a JOIN produit_tailles t ON t.id = a.produit_taille_id JOIN produit_variantes v ON v.id = t.produit_variante_id
+      JOIN produits p ON p.id = v.produit_id JOIN comptes_clients c ON c.id = a.compte_client_id
+      WHERE a.boutique_id = ? AND a.statut = 'attente' ORDER BY a.created_at`, [BOUTIQUE_ID]);
+    const groupes = new Map();
+    for (const x of l) {
+      if (!groupes.has(x.produit_taille_id)) groupes.set(x.produit_taille_id, { produit_taille_id: x.produit_taille_id, produit_id: x.produit_id, nom: x.nom, taille: x.taille, image: x.image, stock: Number(x.quantite), clients: [] });
+      groupes.get(x.produit_taille_id).clients.push({ nom: x.client_nom, telephone: x.telephone, date: x.created_at });
+    }
+    res.json([...groupes.values()].sort((a, b) => b.clients.length - a.clients.length));
+  } catch (e) { repondre(res, e, 'Impossible de charger les tailles demandées.'); }
 };

@@ -46,6 +46,10 @@ router.post('/compte/commandes/:code/annuler', compte.exigerCompte, ctrl.annuler
 // Réservations faites par le client (arrivent dans Gestion → Réservations, « À confirmer »)
 router.post('/compte/reservations', compte.exigerCompte, resaClient.reserver);
 router.post('/compte/reservations/:numero/annuler', compte.exigerCompte, resaClient.annuler);
+// « Prévenez-moi quand ma taille revient »
+router.get('/compte/alertes', compte.exigerCompte, resaClient.mesAlertes);
+router.post('/compte/alertes', compte.exigerCompte, resaClient.creerAlerte);
+router.delete('/compte/alertes/:produit_taille_id', compte.exigerCompte, resaClient.supprimerAlerte);
 
 // ---- Vendeur : tout utilisateur connecté à Koloun Gestion ----
 router.get('/admin/commandes', verifierToken, ctrl.listerCommandes);
@@ -63,6 +67,7 @@ router.get('/admin/produits', verifierToken, ctrl.listerProduitsAdmin);
 router.patch('/admin/produits/:id', verifierToken, ctrl.reglerProduit);
 
 // ---- Clients inscrits : réservé à l'administrateur ----
+router.get('/admin/alertes', verifierToken, resaClient.alertesAdmin); // tailles demandées par les clients
 router.get('/admin/clients', verifierToken, autoriserRoles('admin'), compte.listerClients);
 router.get('/admin/clients/:id/commandes', verifierToken, autoriserRoles('admin'), compte.commandesClient);
 router.patch('/admin/clients/:id', verifierToken, autoriserRoles('admin'), compte.reglerClient);

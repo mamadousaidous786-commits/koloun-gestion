@@ -3,6 +3,7 @@ import { toast } from 'react-toastify';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiImage, FiCopy } from 'react-icons/fi';
 import { listerProduits, creerProduit, modifierProduit, supprimerProduit, dupliquerProduit, abonnesArrivages } from '../services/produitService';
 import { useAuth } from '../context/AuthContext';
+import TaillesDemandees from '../components/TaillesDemandees';
 import { urlFichier } from '../utils/fichiers';
 import { lireSaisieTailles, fusionnerTailles } from '../utils/saisieTailles';
 
@@ -259,6 +260,8 @@ export default function Produits() {
           </button>
         )}
       </div>
+
+      {estAdmin && <TaillesDemandees />}
 
       <div className="relative mb-4 max-w-sm">
         <FiSearch className="absolute left-3 top-3 text-charbon-100/40" />

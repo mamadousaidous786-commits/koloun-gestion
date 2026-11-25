@@ -7,3 +7,4 @@ export const retirerReservation = (id, moyen_paiement_id, prix) => api.put(`/res
 export const annulerReservation = (id, motif) => api.put(`/reservations/${id}/annuler`, { motif }).then((r) => r.data);
 // Réservation faite en ligne (Koloun Boutique) : le vendeur confirme → le stock est mis de côté
 export const confirmerReservation = (id) => api.put(`/reservations/${id}/confirmer`).then((r) => r.data);
+export const prolongerReservation = (id, jours) => api.put(`/reservations/${id}/prolonger`, { jours }).then((r) => r.data);

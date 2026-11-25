@@ -217,4 +217,27 @@ module.exports = async function migrerBoutique(sequelize) {
       if (!(await colonneExiste('reservations', col))) await q(`ALTER TABLE reservations ADD COLUMN ${col} ${def}`);
     }
   });
+
+  // Réservations : date limite de retrait (annulation automatique) et rappel la veille
+  await etape('reservations.expiration', async () => {
+    if (!(await colonneExiste('reservations', 'date_expiration'))) {
+      await q('ALTER TABLE reservations ADD COLUMN date_expiration DATETIME NULL');
+      // Réservations déjà mises de côté : le délai part d'aujourd'hui (aucune annulation surprise)
+      await q("UPDATE reservations SET date_expiration = DATE_ADD(NOW(), INTERVAL 7 DAY) WHERE statut = 'en_attente'");
+    }
+    if (!(await colonneExiste('reservations', 'rappel_envoye'))) await q('ALTER TABLE reservations ADD COLUMN rappel_envoye TINYINT(1) NOT NULL DEFAULT 0');
+  });
+
+  // « Prévenez-moi quand ma taille revient »
+  await etape('alertes_tailles', () => q(`CREATE TABLE IF NOT EXISTS alertes_tailles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    produit_taille_id INT NOT NULL,
+    compte_client_id INT NOT NULL,
+    statut ENUM('attente','prevenu') NOT NULL DEFAULT 'attente',
+    date_prevenu DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_alerte (produit_taille_id, compte_client_id),
+    KEY idx_attente (statut, produit_taille_id)
+  )`));
 };
