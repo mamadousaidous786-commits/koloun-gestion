@@ -156,4 +156,65 @@ module.exports = async function migrerBoutique(sequelize) {
     INDEX idx_resa (reservation_id),
     CONSTRAINT fk_resa_article FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`));
+
+  // Agent IA (WhatsApp, Messenger, test dans Gestion)
+  await etape('agent_conversations', () => q(`CREATE TABLE IF NOT EXISTS agent_conversations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    canal VARCHAR(20) NOT NULL,
+    identifiant VARCHAR(150) NOT NULL,
+    nom VARCHAR(150) NULL,
+    telephone VARCHAR(40) NULL,
+    mode ENUM('ia','humain') NOT NULL DEFAULT 'ia',
+    derniere_activite DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_conv (boutique_id, canal, identifiant)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`));
+  await etape('agent_messages', () => q(`CREATE TABLE IF NOT EXISTS agent_messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    conversation_id INT NOT NULL,
+    auteur ENUM('client','agent','vendeur') NOT NULL,
+    texte TEXT NULL,
+    images TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_agent_msg (conversation_id, id),
+    CONSTRAINT fk_agent_msg FOREIGN KEY (conversation_id) REFERENCES agent_conversations(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`));
+  await etape('agent_echanges', () => q(`CREATE TABLE IF NOT EXISTS agent_echanges (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    conversation_id INT NOT NULL,
+    api MEDIUMTEXT NOT NULL,
+    jetons_entree INT NOT NULL DEFAULT 0,
+    jetons_sortie INT NOT NULL DEFAULT 0,
+    cout_usd DECIMAL(10,6) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_agent_ech (conversation_id, id),
+    CONSTRAINT fk_agent_ech FOREIGN KEY (conversation_id) REFERENCES agent_conversations(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`));
+  await etape('agent_demandes', () => q(`CREATE TABLE IF NOT EXISTS agent_demandes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    conversation_id INT NULL,
+    reference VARCHAR(30) NOT NULL,
+    canal VARCHAR(20) NOT NULL,
+    client_nom VARCHAR(150) NULL,
+    client_telephone VARCHAR(40) NULL,
+    mode_livraison ENUM('livraison','retrait') NOT NULL DEFAULT 'retrait',
+    adresse VARCHAR(255) NULL,
+    lignes TEXT NOT NULL,
+    total DECIMAL(12,2) NOT NULL DEFAULT 0,
+    note VARCHAR(500) NULL,
+    statut ENUM('nouvelle','traitee','annulee') NOT NULL DEFAULT 'nouvelle',
+    traite_par INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_agent_dem (boutique_id, statut)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`));
+
+  // Réservations faites par les clients dans Koloun Boutique (« À confirmer » puis confirmées par le vendeur)
+  await etape('reservations.en_ligne', async () => {
+    await q("ALTER TABLE reservations MODIFY statut ENUM('a_confirmer','en_attente','retiree','annulee') NOT NULL DEFAULT 'en_attente'");
+    for (const [col, def] of [['source', "VARCHAR(20) NOT NULL DEFAULT 'gestion'"], ['compte_client_id', 'INT NULL'], ['stock_bloque', 'TINYINT(1) NOT NULL DEFAULT 1'], ['confirme_par', 'INT NULL'], ['date_confirmation', 'DATETIME NULL']]) {
+      if (!(await colonneExiste('reservations', col))) await q(`ALTER TABLE reservations ADD COLUMN ${col} ${def}`);
+    }
+  });
 };

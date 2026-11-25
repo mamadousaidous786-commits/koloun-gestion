@@ -3,6 +3,8 @@
 // À la réservation : le stock est bloqué (retiré de la vente), le prix accordé est noté.
 // Au retrait : la vente est enregistrée en caisse avec son reçu (le stock a déjà été retiré).
 // Annulation : le stock est remis en vente.
+// Réservations faites par les clients dans Koloun Boutique : elles arrivent « À confirmer » sans toucher au stock ;
+// quand le vendeur confirme, le stock est bloqué (stock_bloque = 1).
 // ============================================================
 const { Op } = require('sequelize');
 const { sequelize, Vente, DetailVente, ProduitTaille, ProduitVariante, Produit, Recu, Notification } = require('../models');
@@ -22,6 +24,30 @@ async function numeroReservation(boutique_id, transaction) {
   return `${prefixe}-${String(Number(r.n) + 1).padStart(3, '0')}`;
 }
 
+// Retire du stock les quantités réservées (contrôle + alertes stock), dans la transaction donnée
+async function bloquerStock(boutique_id, totalParTaille, t) {
+  const tailles = await ProduitTaille.findAll({
+    where: { id: [...totalParTaille.keys()] },
+    include: [{ model: ProduitVariante, attributes: ['id'], include: [{ model: Produit, attributes: ['id', 'nom', 'boutique_id'] }] }],
+    transaction: t, lock: t.LOCK.UPDATE,
+  });
+  const parId = new Map(tailles.filter((x) => x.ProduitVariante?.Produit?.boutique_id === boutique_id).map((x) => [x.id, x]));
+  for (const [id, qte] of totalParTaille) {
+    const x = parId.get(id);
+    if (!x) throw erreur(409, "Un des articles réservés n'existe plus dans les produits.");
+    if (x.quantite < qte) throw erreur(409, `Stock insuffisant pour « ${x.ProduitVariante.Produit.nom} » (taille ${x.taille}) : ${x.quantite} disponible${x.quantite > 1 ? 's' : ''}, ${qte} réservé${qte > 1 ? 's' : ''}.`);
+  }
+  const notifications = [];
+  for (const [id, qte] of totalParTaille) {
+    const x = parId.get(id);
+    await x.decrement('quantite', { by: qte, transaction: t });
+    const reste = x.quantite - qte; const nom = x.ProduitVariante.Produit.nom;
+    if (reste === 0) notifications.push({ boutique_id, type: 'rupture_stock', message: `Le produit "${nom}" (taille ${x.taille}) est en rupture de stock (réservé).` });
+    else if (reste <= x.seuil_alerte) notifications.push({ boutique_id, type: 'stock_faible', message: `Le stock du produit "${nom}" (taille ${x.taille}) est faible (${reste} restant(s)).` });
+  }
+  if (notifications.length) await Notification.bulkCreate(notifications, { transaction: t });
+}
+
 // Réservations avec leurs articles, le nom de qui les a faites et le reçu de vente
 async function charger(boutique_id, { id, statut, recherche } = {}) {
   const conditions = ['r.boutique_id = ?'];
@@ -39,7 +65,7 @@ async function charger(boutique_id, { id, statut, recherche } = {}) {
      LEFT JOIN utilisateurs u ON u.id = r.cree_par
      LEFT JOIN utilisateurs t ON t.id = r.traite_par
      WHERE ${conditions.join(' AND ')}
-     ORDER BY (r.statut = 'en_attente') DESC, r.created_at DESC LIMIT 300`, { ...SELECT, replacements: valeurs });
+     ORDER BY FIELD(r.statut, 'a_confirmer', 'en_attente', 'retiree', 'annulee'), r.created_at DESC LIMIT 300`, { ...SELECT, replacements: valeurs });
   if (!liste.length) return [];
   const articles = await sequelize.query(
     `SELECT * FROM reservation_articles WHERE reservation_id IN (${liste.map((r) => Number(r.id)).join(',')}) ORDER BY id`, SELECT);
@@ -140,6 +166,7 @@ exports.retirer = async (req, res) => {
     t = await sequelize.transaction();
     const [resa] = await sequelize.query('SELECT * FROM reservations WHERE id = ? AND boutique_id = ? FOR UPDATE', { ...SELECT, replacements: [req.params.id, boutique_id], transaction: t });
     if (!resa) throw erreur(404, 'Réservation introuvable.');
+    if (resa.statut === 'a_confirmer') throw erreur(400, "Confirmez d'abord la réservation (le stock sera mis de côté).");
     if (resa.statut !== 'en_attente') throw erreur(400, resa.statut === 'retiree' ? 'Cette réservation a déjà été retirée.' : 'Cette réservation est annulée.');
     const articles = await sequelize.query('SELECT * FROM reservation_articles WHERE reservation_id = ? ORDER BY id', { ...SELECT, replacements: [resa.id], transaction: t });
 
@@ -190,6 +217,30 @@ exports.retirer = async (req, res) => {
 };
 
 // PUT /api/reservations/:id/annuler { motif } — le stock est remis en vente
+// PUT /api/reservations/:id/confirmer — réservation faite en ligne : le vendeur confirme, le stock est mis de côté
+exports.confirmer = async (req, res) => {
+  let t;
+  try {
+    const boutique_id = req.utilisateur.boutique_id;
+    t = await sequelize.transaction();
+    const [resa] = await sequelize.query('SELECT * FROM reservations WHERE id = ? AND boutique_id = ? FOR UPDATE', { ...SELECT, replacements: [req.params.id, boutique_id], transaction: t });
+    if (!resa) throw erreur(404, 'Réservation introuvable.');
+    if (resa.statut !== 'a_confirmer') throw erreur(400, 'Cette réservation est déjà confirmée ou traitée.');
+    const articles = await sequelize.query('SELECT * FROM reservation_articles WHERE reservation_id = ?', { ...SELECT, replacements: [resa.id], transaction: t });
+    const total = new Map();
+    for (const a of articles) if (a.produit_taille_id) total.set(a.produit_taille_id, (total.get(a.produit_taille_id) || 0) + a.quantite);
+    await bloquerStock(boutique_id, total, t);
+    await sequelize.query("UPDATE reservations SET statut = 'en_attente', stock_bloque = 1, confirme_par = ?, date_confirmation = NOW() WHERE id = ?",
+      { replacements: [req.utilisateur.id, resa.id], transaction: t });
+    await t.commit();
+    const [maj] = await charger(boutique_id, { id: resa.id });
+    res.json(maj);
+  } catch (e) {
+    if (t) await t.rollback().catch(() => {});
+    repondreErreur(res, e);
+  }
+};
+
 exports.annuler = async (req, res) => {
   let t;
   try {
@@ -197,10 +248,11 @@ exports.annuler = async (req, res) => {
     t = await sequelize.transaction();
     const [resa] = await sequelize.query('SELECT * FROM reservations WHERE id = ? AND boutique_id = ? FOR UPDATE', { ...SELECT, replacements: [req.params.id, boutique_id], transaction: t });
     if (!resa) throw erreur(404, 'Réservation introuvable.');
-    if (resa.statut !== 'en_attente') throw erreur(400, 'Seule une réservation en attente peut être annulée.');
+    if (!['en_attente', 'a_confirmer'].includes(resa.statut)) throw erreur(400, 'Seule une réservation en attente peut être annulée.');
     const articles = await sequelize.query('SELECT * FROM reservation_articles WHERE reservation_id = ?', { ...SELECT, replacements: [resa.id], transaction: t });
     for (const a of articles) {
-      if (a.produit_taille_id) await ProduitTaille.increment('quantite', { by: a.quantite, where: { id: a.produit_taille_id }, transaction: t });
+      // Le stock n'est remis que s'il avait été retiré (pas pour une réservation en ligne non confirmée)
+      if (a.produit_taille_id && Number(resa.stock_bloque ?? 1) === 1) await ProduitTaille.increment('quantite', { by: a.quantite, where: { id: a.produit_taille_id }, transaction: t });
     }
     await sequelize.query(
       "UPDATE reservations SET statut = 'annulee', motif = ?, traite_par = ?, date_traitement = NOW() WHERE id = ?",
@@ -213,3 +265,6 @@ exports.annuler = async (req, res) => {
     repondreErreur(res, e);
   }
 };
+
+module.exports.numeroReservation = numeroReservation;
+module.exports.charger = charger;

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/boutiqueController');
 const compte = require('../controllers/compteController');
+const resaClient = require('../controllers/reservationClientController');
 const notif = require('../controllers/notificationsClientsController');
 const { verifierToken, autoriserRoles } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -42,6 +43,9 @@ router.get('/auth/google/attente/:nonce', compte.attenteGoogle);
 router.get('/compte', compte.exigerCompte, compte.monCompte);
 router.put('/compte', compte.exigerCompte, compte.modifierCompte);
 router.post('/compte/commandes/:code/annuler', compte.exigerCompte, ctrl.annulerParClient);
+// Réservations faites par le client (arrivent dans Gestion → Réservations, « À confirmer »)
+router.post('/compte/reservations', compte.exigerCompte, resaClient.reserver);
+router.post('/compte/reservations/:numero/annuler', compte.exigerCompte, resaClient.annuler);
 
 // ---- Vendeur : tout utilisateur connecté à Koloun Gestion ----
 router.get('/admin/commandes', verifierToken, ctrl.listerCommandes);

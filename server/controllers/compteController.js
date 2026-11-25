@@ -265,7 +265,9 @@ exports.monCompte = async (req, res) => {
               (SELECT COALESCE(SUM(l.quantite),0) FROM boutique_commande_lignes l WHERE l.commande_id = c.id) AS nb,
               (SELECT l.image FROM boutique_commande_lignes l WHERE l.commande_id = c.id ORDER BY l.id LIMIT 1) AS image
        FROM boutique_commandes c ${JOINTURE_LIVRAISON} WHERE c.compte_client_id = ? ORDER BY c.created_at DESC LIMIT 100`, [c.id]);
-    res.json({ compte: publique(c), commandes: commandes.map((x) => ({ ...x, nb: Number(x.nb), total: Math.round(Number(x.total_final)), frais_livraison: Math.round(Number(x.frais_livraison)), total_initial: Math.round(Number(x.total_initial)), date: x.created_at })) });
+    const { reservationsDuCompte } = require('./reservationClientController'); // chargé ici (évite une boucle d'import)
+    const reservations = await reservationsDuCompte(c.id).catch(() => []);
+    res.json({ compte: publique(c), reservations, commandes: commandes.map((x) => ({ ...x, nb: Number(x.nb), total: Math.round(Number(x.total_final)), frais_livraison: Math.round(Number(x.frais_livraison)), total_initial: Math.round(Number(x.total_initial)), date: x.created_at })) });
   } catch (e) { repondreErreur(res, e, 'Impossible de charger votre compte.'); }
 };
 
@@ -340,3 +342,8 @@ exports.reinitialiserMotDePasse = async (req, res) => {
     res.json({ mot_de_passe: provisoire });
   } catch (e) { repondreErreur(res, e, 'La réinitialisation a échoué.'); }
 };
+
+// Utilisés par les réservations en ligne (reservationClientController)
+exports.normaliserTelephone = normaliserTelephone;
+exports.publique = publique;
+exports.lierClientGestion = lierClientGestion;

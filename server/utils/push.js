@@ -18,6 +18,8 @@ const TITRES = {
   livraison_nouvelle: '🚚 Nouvelle livraison',
   livraison_livree: '✅ Livraison effectuée',
   livraison_annulee: '❌ Livraison annulée',
+  reservation_en_ligne: '🔖 Nouvelle réservation en ligne',
+  commande_agent: '🤖 Commande transmise par l\'agent',
 };
 
 // Envoie une alerte aux appareils de la boutique (par défaut : aux administrateurs)
@@ -47,7 +49,7 @@ function brancherNotifications(Notification) {
     return envoyerAlerte(n.boutique_id, {
       titre: TITRES[n.type] || 'Koloun Luxure',
       corps: n.message,
-      url: livraison ? '/livraisons' : '/notifications',
+      url: livraison ? '/livraisons' : n.type === 'reservation_en_ligne' ? '/reservations' : '/notifications',
       tag: `${n.type}-${n.id || Date.now()}`,
       urgent: n.type === 'rupture_stock',
     }, livraison ? ['admin', 'utilisateur'] : ['admin'], livraison ? n.utilisateur_id : null);

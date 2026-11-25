@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
-import { FiBookmark, FiPlus, FiMinus, FiSearch, FiX, FiCheck, FiPrinter, FiPhone, FiCalendar, FiImage, FiTrash2 } from 'react-icons/fi';
+import { FiBookmark, FiGlobe, FiPlus, FiMinus, FiSearch, FiX, FiCheck, FiPrinter, FiPhone, FiCalendar, FiImage, FiTrash2 } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
 import EnTete from '../components/EnTete';
 import Modal from '../components/Modal';
@@ -8,7 +8,7 @@ import ChampClient from '../components/ChampClient';
 import { listerProduits } from '../services/produitService';
 import { listerClients } from '../services/clientService';
 import { genererRecu } from '../services/venteService';
-import { listerReservations, creerReservation, retirerReservation, annulerReservation } from '../services/reservationService';
+import { listerReservations, creerReservation, retirerReservation, annulerReservation, confirmerReservation } from '../services/reservationService';
 import { urlFichier } from '../utils/fichiers';
 import { formaterGNF, formaterDate, lienWhatsApp, lienAppel, aujourdhui } from '../utils/format';
 
@@ -20,14 +20,16 @@ const MOYENS_PAIEMENT = [
 ];
 
 const FILTRES = [
-  { cle: 'en_attente', libelle: 'En attente' },
+  { cle: 'a_confirmer', libelle: 'À confirmer' },
+  { cle: 'en_attente', libelle: 'Mises de côté' },
   { cle: 'retiree', libelle: 'Retirées' },
   { cle: 'annulee', libelle: 'Annulées' },
   { cle: 'toutes', libelle: 'Toutes' },
 ];
 
 const STATUTS = {
-  en_attente: { libelle: 'En attente', classe: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  a_confirmer: { libelle: 'À confirmer', classe: 'bg-blue-50 text-blue-700 ring-blue-200' },
+  en_attente: { libelle: 'Mise de côté', classe: 'bg-amber-50 text-amber-700 ring-amber-200' },
   retiree: { libelle: 'Retirée', classe: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
   annulee: { libelle: 'Annulée', classe: 'bg-slate-100 text-slate-500 ring-slate-200' },
 };
@@ -45,6 +47,13 @@ async function ouvrirRecu(venteId, onglet) {
   }
 }
 
+// Bon de réservation envoyé au client par WhatsApp (après confirmation)
+const telLisible = (t) => String(t || '').replace(/^224(?=\d{9}$)/, '');
+export function messageReservation(r) {
+  const lignes = r.articles.map((a) => `• ${a.produit_nom} · taille ${a.taille} × ${a.quantite} : ${formaterGNF(a.prix * a.quantite)}`).join('\n');
+  return `Bonjour ${r.client_nom} 👋\n\n✅ Votre réservation *${r.numero}* chez Koloun Luxure est confirmée : vos articles sont mis de côté.\n\n${lignes}\n\n*Total à régler au retrait : ${formaterGNF(r.total)}*${r.date_retrait_prevue ? `\nPassage prévu le ${formaterDate(r.date_retrait_prevue)}` : ''}\n\n📍 Boutique Koloun Luxure, Lambanyi (Forage Dadis), Conakry.\nVous recevrez votre reçu de vente au moment du paiement. À bientôt !`;
+}
+
 async function envoyerRecuWhatsApp(venteId) {
   const onglet = window.open('', '_blank');
   try {
@@ -59,7 +68,10 @@ async function envoyerRecuWhatsApp(venteId) {
 }
 
 export default function Reservations() {
-  const [filtre, setFiltre] = useState('en_attente');
+  const [filtre, setFiltre] = useState('a_confirmer');
+  const [aConfirmer, setAConfirmer] = useState(0);
+  const [confirmee, setConfirmee] = useState(null);   // réservation tout juste confirmée → envoi WhatsApp
+  const [refus, setRefus] = useState(false);
   const [recherche, setRecherche] = useState('');
   const [liste, setListe] = useState([]);
   const [chargement, setChargement] = useState(true);
@@ -68,8 +80,14 @@ export default function Reservations() {
   const [annulation, setAnnulation] = useState(null); // { reservation, motif }
 
   const charger = () => {
+    listerReservations({ statut: 'a_confirmer' }).then((l) => setAConfirmer(l.length)).catch(() => {});
     listerReservations({ statut: filtre, q: recherche.trim() || undefined })
-      .then(setListe).catch(() => toast.error('Impossible de charger les réservations.'))
+      .then((l) => {
+        setListe(l);
+        // Rien à confirmer à l'ouverture : on montre directement les articles mis de côté
+        if (filtre === 'a_confirmer' && !l.length && !recherche && premierChargement.current) setFiltre('en_attente');
+        premierChargement.current = false;
+      }).catch(() => toast.error('Impossible de charger les réservations.'))
       .finally(() => setChargement(false));
   };
   useEffect(() => {
@@ -77,12 +95,25 @@ export default function Reservations() {
     return () => clearTimeout(minuteur);
   }, [filtre, recherche]);
 
+  const premierChargement = React.useRef(true);
+
+  const confirmer = async (r) => {
+    try {
+      const maj = await confirmerReservation(r.id);
+      toast.success(`Réservation ${maj.numero} confirmée : articles mis de côté, stock mis à jour.`);
+      setConfirmee(maj);
+      charger();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Impossible de confirmer.');
+    }
+  };
+
   const totalEnAttente = filtre === 'en_attente' ? liste.reduce((s, r) => s + r.total, 0) : null;
 
   const annuler = async () => {
     try {
       await annulerReservation(annulation.reservation.id, annulation.motif);
-      toast.success('Réservation annulée : les articles sont remis en vente.');
+      toast.success(annulation.reservation.statut === 'a_confirmer' ? 'Réservation refusée.' : 'Réservation annulée : les articles sont remis en vente.');
       setAnnulation(null);
       charger();
     } catch (e) {
@@ -107,6 +138,7 @@ export default function Reservations() {
             <button key={f.cle} onClick={() => setFiltre(f.cle)}
               className={`h-9 px-3.5 rounded-full text-sm font-medium ring-1 ${filtre === f.cle ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'}`}>
               {f.libelle}
+              {f.cle === 'a_confirmer' && aConfirmer > 0 && <span className={`ml-1.5 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full text-[11px] font-bold ${filtre === f.cle ? 'bg-white text-blue-700' : 'bg-red-500 text-white'}`}>{aConfirmer}</span>}
             </button>
           ))}
         </div>
@@ -121,12 +153,12 @@ export default function Reservations() {
       ) : liste.length === 0 ? (
         <div className="card text-center py-12">
           <FiBookmark className="mx-auto text-slate-300" size={28} />
-          <p className="text-slate-500 mt-2">{filtre === 'en_attente' ? 'Aucun article réservé pour le moment.' : 'Aucune réservation ici.'}</p>
+          <p className="text-slate-500 mt-2">{filtre === 'en_attente' ? 'Aucun article réservé pour le moment.' : filtre === 'a_confirmer' ? 'Aucune réservation en ligne à confirmer. Celles des clients de Koloun Boutique arrivent ici.' : 'Aucune réservation ici.'}</p>
           {filtre === 'en_attente' && <button onClick={() => setCreation(true)} className="btn-secondary mt-4"><FiPlus /> Réserver des articles pour un client</button>}
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {liste.map((r) => <CarteReservation key={r.id} r={r} onRetirer={() => setRetrait(r)} onAnnuler={() => setAnnulation({ reservation: r, motif: '' })} />)}
+          {liste.map((r) => <CarteReservation key={r.id} r={r} onRetirer={() => setRetrait(r)} onConfirmer={() => confirmer(r)} onAnnuler={() => setAnnulation({ reservation: r, motif: '' })} />)}
         </div>
       )}
 
@@ -134,16 +166,35 @@ export default function Reservations() {
       {retrait && <Retrait reservation={retrait} onClose={() => setRetrait(null)} onFait={() => { setRetrait(null); charger(); }} />}
 
       {annulation && (
-        <Modal titre={`Annuler ${annulation.reservation.numero}`} onClose={() => setAnnulation(null)}>
+        <Modal titre={`${annulation.reservation.statut === 'a_confirmer' ? 'Refuser' : 'Annuler'} ${annulation.reservation.numero}`} onClose={() => setAnnulation(null)}>
           <div className="space-y-4">
-            <p className="text-sm text-slate-600">Les articles de {annulation.reservation.client_nom} seront remis en vente.</p>
+            <p className="text-sm text-slate-600">{annulation.reservation.statut === 'a_confirmer'
+              ? `${annulation.reservation.client_nom} verra la réservation « Annulée » dans son compte, avec le motif. Le stock n'avait pas été touché.`
+              : `Les articles de ${annulation.reservation.client_nom} seront remis en vente.`}</p>
             <div>
               <label className="etiquette">Motif (facultatif)</label>
               <input autoFocus className="input-champ" placeholder="Ex : le client a changé d'avis" value={annulation.motif} onChange={(e) => setAnnulation({ ...annulation, motif: e.target.value })} />
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setAnnulation(null)} className="btn-secondary">Retour</button>
-              <button onClick={annuler} className="btn-primary !bg-none !bg-red-600 hover:!bg-red-700">Annuler la réservation</button>
+              <button onClick={annuler} className="btn-primary !bg-none !bg-red-600 hover:!bg-red-700">{annulation.reservation.statut === 'a_confirmer' ? 'Refuser la réservation' : 'Annuler la réservation'}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {confirmee && (
+        <Modal titre={`${confirmee.numero} confirmée`} onClose={() => setConfirmee(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">Les articles sont mis de côté et retirés du stock. Prévenez {confirmee.client_nom} :</p>
+            <pre className="whitespace-pre-wrap text-[13px] leading-relaxed bg-emerald-50/60 ring-1 ring-emerald-100 rounded-xl p-3 font-sans text-slate-800 max-h-60 overflow-auto">{messageReservation(confirmee)}</pre>
+            <div className="flex flex-col sm:flex-row gap-2">
+              {confirmee.client_telephone && (
+                <a href={lienWhatsApp(confirmee.client_telephone, messageReservation(confirmee))} target="_blank" rel="noreferrer" onClick={() => setConfirmee(null)}
+                  className="btn-primary flex-1 !bg-none !bg-emerald-600 hover:!bg-emerald-700"><FaWhatsapp size={17} /> Envoyer par WhatsApp</a>
+              )}
+              {confirmee.client_telephone && <a href={lienAppel(confirmee.client_telephone)} className="btn-secondary flex-1"><FiPhone /> Appeler {telLisible(confirmee.client_telephone)}</a>}
+              <button onClick={() => setConfirmee(null)} className="btn-secondary">Plus tard</button>
             </div>
           </div>
         </Modal>
@@ -152,7 +203,8 @@ export default function Reservations() {
   );
 }
 
-function CarteReservation({ r, onRetirer, onAnnuler }) {
+function CarteReservation({ r, onRetirer, onConfirmer, onAnnuler }) {
+  const [envoi, setEnvoi] = useState(false);
   const s = STATUTS[r.statut];
   return (
     <div className={`card flex flex-col !p-4 ${r.statut === 'annulee' ? 'opacity-75' : ''}`}>
@@ -161,7 +213,10 @@ function CarteReservation({ r, onRetirer, onAnnuler }) {
           <p className="font-semibold text-slate-900 truncate">{r.client_nom}</p>
           <p className="text-xs text-slate-500">{r.numero}{r.client_telephone && <> · <span className="whitespace-nowrap">{r.client_telephone}</span></>}</p>
         </div>
-        <span className={`badge shrink-0 ${s.classe}`}>{s.libelle}</span>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className={`badge ${s.classe}`}>{s.libelle}</span>
+          {r.source === 'boutique' && <span className="badge bg-violet-50 text-violet-700 ring-violet-200 whitespace-nowrap"><FiGlobe size={11} className="mr-1" />En ligne</span>}
+        </div>
       </div>
 
       <ul className="mt-3 space-y-2">
@@ -188,18 +243,25 @@ function CarteReservation({ r, onRetirer, onAnnuler }) {
       </div>
 
       <div className="text-xs text-slate-500 mt-2 space-y-0.5">
-        {r.date_retrait_prevue && r.statut === 'en_attente' && (
+        {r.date_retrait_prevue && ['a_confirmer', 'en_attente'].includes(r.statut) && (
           <p className={`flex items-center gap-1 ${enRetard(r) ? 'text-red-600 font-medium' : ''}`}>
             <FiCalendar size={12} /> {enRetard(r) ? 'Devait passer le' : 'Passe le'} {formaterDate(r.date_retrait_prevue)}
           </p>
         )}
         {r.note && <p>Note : {r.note}</p>}
-        <p>Réservé le {formaterDate(r.created_at)}{r.cree_par_nom ? ` par ${r.cree_par_nom}` : ''}</p>
+        <p>Réservé le {formaterDate(r.created_at)}{r.source === 'boutique' ? ' depuis Koloun Boutique' : r.cree_par_nom ? ` par ${r.cree_par_nom}` : ''}</p>
+        {r.statut === 'a_confirmer' && <p className="text-blue-700">Stock pas encore retiré : confirmez pour mettre les articles de côté.</p>}
         {r.statut === 'retiree' && <p className="text-emerald-700">Retiré le {formaterDate(r.date_traitement)} · reçu {r.numero_recu}</p>}
         {r.statut === 'annulee' && <p>Annulée le {formaterDate(r.date_traitement)}{r.motif ? ` : ${r.motif}` : ''}</p>}
       </div>
 
       <div className="mt-auto pt-3 space-y-2">
+        {r.statut === 'a_confirmer' && (
+          <div className="flex gap-2">
+            <button disabled={envoi} onClick={async () => { setEnvoi(true); await onConfirmer(); setEnvoi(false); }} className="btn-primary flex-1"><FiCheck /> {envoi ? 'Confirmation…' : 'Confirmer (mettre de côté)'}</button>
+            <button onClick={onAnnuler} className="btn-secondary !px-3 text-red-600" title="Refuser la réservation" aria-label="Refuser la réservation"><FiX /></button>
+          </div>
+        )}
         {r.statut === 'en_attente' && (
           <div className="flex gap-2">
             <button onClick={onRetirer} className="btn-primary flex-1 !bg-none !bg-emerald-600 hover:!bg-emerald-700"><FiCheck /> Client passé : encaisser</button>
@@ -212,11 +274,17 @@ function CarteReservation({ r, onRetirer, onAnnuler }) {
             <button onClick={() => envoyerRecuWhatsApp(r.vente_id)} className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2.5 py-1.5"><FaWhatsapp size={14} /> Reçu par WhatsApp</button>
           </div>
         )}
-        {r.statut === 'en_attente' && r.client_telephone && (
+        {['a_confirmer', 'en_attente'].includes(r.statut) && r.client_telephone && (
           <div className="flex gap-2">
             <a href={lienAppel(r.client_telephone)} className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg px-2.5 py-1.5"><FiPhone size={13} /> Appeler</a>
-            <a href={lienWhatsApp(r.client_telephone, `Bonjour ${r.client_nom}, vos articles réservés chez Koloun Luxure (${r.numero}) vous attendent : ${formaterGNF(r.total)} à régler au retrait. À bientôt !`)} target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2.5 py-1.5"><FaWhatsapp size={14} /> Rappeler par WhatsApp</a>
+            {r.statut === 'en_attente' && (
+              <a href={lienWhatsApp(r.client_telephone, messageReservation(r))} target="_blank" rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2.5 py-1.5"><FaWhatsapp size={14} /> Bon de réservation WhatsApp</a>
+            )}
+            {r.statut === 'a_confirmer' && (
+              <a href={lienWhatsApp(r.client_telephone, `Bonjour ${r.client_nom}, Koloun Luxure a bien reçu votre réservation ${r.numero}. `)} target="_blank" rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2.5 py-1.5"><FaWhatsapp size={14} /> Écrire</a>
+            )}
           </div>
         )}
       </div>
