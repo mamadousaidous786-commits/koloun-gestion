@@ -18,7 +18,6 @@ const pushRoutes = require('./routes/pushRoutes');
 const suiviRoutes = require('./routes/suiviRoutes');
 const livraisonRoutes = require('./routes/livraisonRoutes');
 const reservationRoutes = require('./routes/reservationRoutes'); // articles réservés, payés au retrait
-const agentRoutes = require('./routes/agentRoutes'); // agent IA (test, commandes transmises)
 const statistiqueRoutes = require('./routes/statistiqueRoutes');
 const utilisateurRoutes = require('./routes/utilisateurRoutes');
 const fournisseurRoutes = require('./routes/fournisseurRoutes');
@@ -58,7 +57,6 @@ app.use('/api/groupes-commande', groupeCommandeRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/livraisons', livraisonRoutes);
 app.use('/api/reservations', reservationRoutes);
-app.use('/api/agent', agentRoutes);
 app.use('/api/suivi', suiviRoutes); // public : le client suit sa commande sans compte
 app.use('/api/boutique', boutiqueRoutes); // Koloun Boutique : public + espace vendeur (avant la route '/api' des fournisseurs)
 app.use('/api/statistiques', statistiqueRoutes);
