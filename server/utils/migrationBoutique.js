@@ -286,4 +286,21 @@ module.exports = async function migrerBoutique(sequelize) {
     PRIMARY KEY (promotion_id, produit_id),
     KEY idx_promo_produit (produit_id)
   )`));
+
+  // BLACK FRIDAY 2026 : -30 % sur tous les articles déjà en ligne, jusqu'au dimanche 29 novembre 23 h 59.
+  // Créée une seule fois, au premier démarrage du serveur ; les articles ajoutés ensuite restent au prix normal.
+  // Visible et modifiable (arrêter, changer la fin) dans Koloun Gestion → Promotions.
+  await etape('promotion.black_friday_2026', async () => {
+    const [deja] = await sequelize.query("SELECT id FROM promotions WHERE nom = 'Black Friday' AND fin = '2026-11-29 23:59:00' LIMIT 1", { type: sequelize.QueryTypes.SELECT });
+    if (deja) return;
+    const [[fini]] = await sequelize.query("SELECT NOW() >= '2026-11-29 23:59:00' AS passe");
+    if (Number(fini.passe)) return; // trop tard : ne rien créer
+    const boutiques = await sequelize.query('SELECT DISTINCT boutique_id FROM produits', { type: sequelize.QueryTypes.SELECT });
+    for (const { boutique_id } of boutiques) {
+      const [id] = await sequelize.query("INSERT INTO promotions (boutique_id, nom, pourcentage, debut, fin) VALUES (?, 'Black Friday', 30, NOW(), '2026-11-29 23:59:00')",
+        { replacements: [boutique_id], type: sequelize.QueryTypes.INSERT });
+      await sequelize.query('INSERT INTO promotion_produits (promotion_id, produit_id) SELECT ?, id FROM produits WHERE boutique_id = ?', { replacements: [id, boutique_id] });
+    }
+    console.log('🏷️  Black Friday -30 % activé sur les articles actuels (jusqu\'au 29/11 23:59).');
+  });
 };
