@@ -23,7 +23,15 @@ exports.listerProduits = async (req, res) => {
       order: [['nom', 'ASC']],
     });
 
-    res.json(produits);
+    // Promotion en cours (ex. : Black Friday) : la caisse propose directement le prix promo
+    const promotions = require('../utils/promotions');
+    const promos = await promotions.enCours(boutique_id).catch(() => []);
+    if (!promos.length) return res.json(produits);
+    res.json(produits.map((p) => {
+      const o = p.toJSON();
+      const r = promotions.calculer(promos, o.id, o.prix_normal);
+      return r.promo ? { ...o, prix_promo: r.prix, promo: r.promo } : o;
+    }));
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
   }

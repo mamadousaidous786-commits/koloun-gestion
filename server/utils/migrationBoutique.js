@@ -266,4 +266,24 @@ module.exports = async function migrerBoutique(sequelize) {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_chat_msg (conversation_id, id)
   )`));
+
+  // Promotions (prix barré, ex. : Black Friday -30 %) — articles figés à la création
+  await etape('promotions', () => q(`CREATE TABLE IF NOT EXISTS promotions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    boutique_id INT NOT NULL,
+    nom VARCHAR(80) NOT NULL,
+    pourcentage DECIMAL(5,2) NOT NULL,
+    debut DATETIME NOT NULL,
+    fin DATETIME NOT NULL,
+    actif TINYINT(1) NOT NULL DEFAULT 1,
+    cree_par INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_promo_periode (boutique_id, actif, debut, fin)
+  )`));
+  await etape('promotion_produits', () => q(`CREATE TABLE IF NOT EXISTS promotion_produits (
+    promotion_id INT NOT NULL,
+    produit_id INT NOT NULL,
+    PRIMARY KEY (promotion_id, produit_id),
+    KEY idx_promo_produit (produit_id)
+  )`));
 };

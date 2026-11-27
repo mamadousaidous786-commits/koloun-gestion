@@ -17,6 +17,7 @@ const Livraisons = lazy(() => import('./pages/Livraisons'));
 const Reservations = lazy(() => import('./pages/Reservations'));
 const AgentIA = lazy(() => import('./pages/AgentIA'));
 const Messages = lazy(() => import('./pages/Messages'));
+const Promotions = lazy(() => import('./pages/Promotions'));
 const Commandes = lazy(() => import('./pages/Commandes'));
 const Utilisateurs = lazy(() => import('./pages/Utilisateurs'));
 const Comptabilite = lazy(() => import('./pages/Comptabilite'));
@@ -77,6 +78,7 @@ export default function App() {
             <Route path="/reservations" element={<Reservations />} />
             <Route path="/agent" element={<AgentIA />} />
             <Route path="/messages" element={<Messages />} />
+            <Route path="/promotions" element={<Admin><Promotions /></Admin>} />
             <Route path="/commandes-speciales" element={<Admin><CommandesSpeciales /></Admin>} />
             <Route path="/clients" element={<Clients />} />
             <Route path="/notifications" element={<Notifications />} />

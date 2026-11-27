@@ -61,14 +61,15 @@ async function articles({ recherche, categorie, taille, prix_max, ids } = {}) {
   }
   let liste = [...parId.values()].filter((a) => a.modeles.some((m) => m.tailles.length));
   if (taille) liste = liste.filter((a) => a.modeles.some((m) => m.tailles.some((t) => String(t.taille).toLowerCase() === String(taille).toLowerCase())));
-  return liste;
+  return require('./promotions').appliquer(BOUTIQUE_ID, liste); // prix promo en cours (ex. : Black Friday)
 }
 
 const resumeArticle = (a) => ({
   id: a.id,
   nom: a.nom,
   prix: gnf(a.prix),
-  prix_minimum_negociable: gnf(prixPlancher(a.prix)),
+  ...(a.promo ? { prix_avant_promo: gnf(a.prix_avant), promotion: `${a.promo.nom} -${a.promo.pourcentage} % jusqu'au ${new Date(a.promo.fin).toLocaleDateString('fr-FR')}` } : {}),
+  prix_minimum_negociable: gnf(a.promo ? a.prix : prixPlancher(a.prix)), // en promotion : pas de réduction en plus
   categorie: a.categorie || undefined,
   modeles: a.modeles.map((m, i) => ({ modele: i + 1, tailles_disponibles: m.tailles.map((t) => `${t.taille} (${t.stock})`).join(', ') || 'épuisé' })),
   lien: `${SITE()}/article/${a.id}`,
@@ -205,7 +206,7 @@ async function executer(nom, e, ctx) {
   if (nom === 'calculer_reduction') {
     const [a] = await articles({ ids: [e.article_id] });
     if (!a) return { erreur: 'Article introuvable ou épuisé.' };
-    const min = prixPlancher(a.prix); const propose = nombre(e.prix_propose);
+    const min = a.promo ? a.prix : prixPlancher(a.prix); const propose = nombre(e.prix_propose); // en promotion : pas de réduction en plus
     return propose >= min
       ? { accepte: true, prix_normal: gnf(a.prix), prix_accorde: gnf(propose), reduction: `${Math.round((1 - propose / a.prix) * 100)} %` }
       : { accepte: false, prix_normal: gnf(a.prix), prix_minimum: gnf(min), message: `En dessous de ${gnf(min)}, il faut l'accord du vendeur.` };

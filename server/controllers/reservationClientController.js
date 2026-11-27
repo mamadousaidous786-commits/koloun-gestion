@@ -80,6 +80,9 @@ exports.reserver = async (req, res) => {
       if (Number(x.quantite) < qte) throw erreur(409, `« ${x.nom} » en taille ${x.taille} : il n'en reste que ${Math.max(0, x.quantite)}.`);
     }
 
+    // Prix promo (ex. : Black Friday) : c'est ce prix qui est réservé
+    const promos = await require('../utils/promotions').enCours(BOUTIQUE_ID);
+    for (const x of tailles) x.prix_normal = require('../utils/promotions').calculer(promos, x.produit_id, x.prix_normal).prix;
     const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body.date_retrait_prevue || '')) ? req.body.date_retrait_prevue : null;
     const lignes = [...total].map(([id, qte]) => ({ x: parId.get(id), qte }));
     const somme = lignes.reduce((s, l) => s + Math.round(Number(l.x.prix_normal)) * l.qte, 0);

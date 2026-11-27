@@ -70,7 +70,7 @@ export default function Ventes() {
         nom: produit.nom,
         taille: taille.taille,
         image: variante.image,
-        prix_applique: Number(produit.prix_normal),
+        prix_applique: Number(produit.prix_promo ?? produit.prix_normal), // promotion en cours : prix promo proposé
         prix_normal: Number(produit.prix_normal),
         quantite: 1,
       }]);
@@ -185,7 +185,13 @@ export default function Ventes() {
 
                   <div className="p-2.5 flex flex-col flex-1">
                     <p className="text-sm font-semibold text-slate-900 truncate">{p.nom}</p>
-                    <p className="text-xs font-medium text-blue-600">{formaterGNF(p.prix_normal)}</p>
+                    {p.promo ? (
+                      <p className="text-xs font-medium flex flex-wrap items-center gap-x-1.5">
+                        <span className="text-red-600">{formaterGNF(p.prix_promo)}</span>
+                        <span className="text-slate-400 line-through">{formaterGNF(p.prix_normal)}</span>
+                        <span className="px-1 rounded bg-red-600 text-white text-[10px] font-bold">-{p.promo.pourcentage}%</span>
+                      </p>
+                    ) : <p className="text-xs font-medium text-blue-600">{formaterGNF(p.prix_normal)}</p>}
 
                     {variante?.ProduitTailles?.length > 0 && (
                       <select

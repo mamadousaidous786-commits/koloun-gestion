@@ -8,7 +8,8 @@ const crypto = require('crypto');
 const sequelize = require('../config/database');
 const { Notification, Livraison, LivraisonArticle } = require('../models');
 const { lireCompte } = require('./compteController');
-const chat = require('../utils/chat'); // la commande apparaît aussi dans la discussion client ↔ boutique
+const chat = require('../utils/chat');
+const promotions = require('../utils/promotions'); // prix promo (ex. : Black Friday) // la commande apparaît aussi dans la discussion client ↔ boutique
 
 const BOUTIQUE_ID = Number(process.env.BOUTIQUE_PUBLIQUE_ID || 1);
 const SELECT = { type: sequelize.QueryTypes.SELECT };
@@ -89,7 +90,9 @@ exports.infos = async (req, res) => {
       `SELECT categorie, COUNT(*) AS n FROM produits
        WHERE boutique_id = ? AND categorie IS NOT NULL AND categorie <> '' AND COALESCE(visible_boutique,1)=1
        GROUP BY categorie ORDER BY n DESC`, [BOUTIQUE_ID]);
-    res.json({ ...(b || {}), categories: categories.map((c) => c.categorie) });
+    // Promotion en cours (bandeau de l'accueil)
+    const [promo] = await promotions.enCours(BOUTIQUE_ID);
+    res.json({ ...(b || {}), categories: categories.map((c) => c.categorie), promotion: promo ? { nom: promo.nom, pourcentage: promo.pourcentage, fin: promo.fin } : null });
   } catch (e) {
     res.status(500).json({ message: 'Impossible de charger les informations de la boutique.', erreur: e.message });
   }
@@ -104,7 +107,7 @@ exports.produits = async (req, res) => {
     if (req.query.categorie) { filtre += ' AND p.categorie = ?'; params.push(req.query.categorie); }
     const lignes = await sql(`${REQUETE_PRODUITS}${filtre} ORDER BY p.created_at DESC, v.id ASC, t.id ASC`, params);
     res.set('Cache-Control', 'public, max-age=30');
-    res.json(regrouperProduits(req, lignes));
+    res.json(await promotions.appliquer(BOUTIQUE_ID, regrouperProduits(req, lignes)));
   } catch (e) {
     res.status(500).json({ message: 'Impossible de charger les articles.', erreur: e.message });
   }
@@ -120,7 +123,7 @@ exports.nouveautes = async (req, res) => {
     if (!ids.length) return res.json([]);
     const liste = ids.map((r) => r.id);
     const lignes = await sql(`${REQUETE_PRODUITS} AND p.id IN (${liste.map(() => '?').join(',')}) ORDER BY p.created_at DESC, v.id, t.id`, [BOUTIQUE_ID, ...liste]);
-    res.json(regrouperProduits(req, lignes));
+    res.json(await promotions.appliquer(BOUTIQUE_ID, regrouperProduits(req, lignes)));
   } catch (e) {
     res.status(500).json({ message: 'Impossible de charger les nouveautés.', erreur: e.message });
   }
@@ -130,7 +133,7 @@ exports.nouveautes = async (req, res) => {
 exports.produit = async (req, res) => {
   try {
     const lignes = await sql(`${REQUETE_PRODUITS} AND p.id = ? ORDER BY v.id, t.id`, [BOUTIQUE_ID, req.params.id]);
-    const [p] = regrouperProduits(req, lignes);
+    const [p] = await promotions.appliquer(BOUTIQUE_ID, regrouperProduits(req, lignes));
     if (!p) return res.status(404).json({ message: "Cet article n'est plus disponible." });
     res.json(p);
   } catch (e) {
@@ -197,7 +200,8 @@ exports.creerCommande = async (req, res) => {
         if (Number(r.stock) < quantite) {
           throw Object.assign(new Error(`« ${r.nom} » taille ${r.taille} : il n'en reste que ${Math.max(0, r.stock)}.`), { code: 409 });
         }
-        lignes.push({ source: 'stock', produit_id: r.pid, produit_variante_id: r.vid, produit_taille_id: r.tid, nom: r.nom, image: urlImage(req, r.image), taille: r.taille, quantite, prix_unitaire: nombre(r.prix_normal) });
+        const tarif = await promotions.prixDe(BOUTIQUE_ID, r.pid, r.prix_normal); // prix promo s'il y en a une
+        lignes.push({ source: 'stock', produit_id: r.pid, produit_variante_id: r.vid, produit_taille_id: r.tid, nom: r.nom, image: urlImage(req, r.image), taille: r.taille, quantite, prix_unitaire: tarif.prix });
       }
     }
 
